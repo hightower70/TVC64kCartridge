@@ -1,0 +1,229 @@
+        ; ****************
+        ; * U0 data area *
+        ; ****************
+RAM_DATA_STORAGE:	
+        phase RAM_DATA
+BASIC_VERSION           db      2           ; ROM version information
+ROM_RETURN_ADDRESS      dw      0           ; Return address for 2.x ROM 
+FILE_IS_OPENED          db      0           ; 1 - file is opened in the ROM filesystem, 0 - no file opened
+CURRENT_PAGE_INDEX      db      0           ; Used page index 0..3
+CURRENT_FILE_LENGTH     dw      0           ; Remaining length of the currently opened file
+CURRENT_FILE_ADDRESS    dw      0           ; Address of the currently opened file
+CURRENT_CAS_HEADER_POS  db      0           ; Position in CAS header (for CH_IN function)
+CURRENT_FILE_NAME_LEN   db      0           ; Name length of the currently opened file
+CURRENT_FILE_NAME       ds      CART_MAX_FILENAME_LENGTH, ' ' ; Name of the currently opened file
+
+        ; CAS header struct
+CAS_HEADER  CASHeader
+
+RAM_DATA_LENGTH equ $-RAM_DATA
+	dephase      
+
+        ; ***********************
+        ; * Initialization code *
+        ; ***********************
+
+        ;---------------------------------------------------------------------
+        ; BASIC initialization and version detection program
+BASIC_INITIALIZE_CODE:	
+        phase RAM_PROGRAM
+        
+BASIC_INITIALIZE:        
+        ; Set memory map to: U0, U1, U2, SYS
+	ld	a, P_U0_U1_U2_SYS
+        ld      (P_SAVE), a
+        out     (PAGE_REG), a
+		
+	; determine ROM version (1.x or 2.x)
+	ld 	a, ($f09f)                  ; Check for 1.2 verion number
+	cp	$0c
+	jr 	nz, BASIC_INITIALIZE_END
+		
+	; version is 1.x -> store version
+	ld	a, 1
+	ld	(BASIC_VERSION), a
+		
+	; initialize BASIC storage area
+	ld	hl, BASIC_STORAGE_AREA
+	push 	hl
+	pop	ix
+	ld	bc, 02efh
+	ld	de, 1701h
+	ld	(hl), 0
+	ldir
+		
+	; initialize error handlers
+	ld	hl, 0fb5bh
+	ld 	de, 8
+	ld	bc, 27h
+	ldir
+		
+	; call NEW command
+	call	0de10h
+
+BASIC_INITIALIZE_END:	
+	; Set memory map to: U0, U1, U2, CART
+	ld	a, P_U0_U1_U2_CART
+        ld      (P_SAVE), a
+        out     (PAGE_REG), a
+		
+	; return back to the CART
+	ret
+
+BASIC_INITIALIZE_CODE_LENGTH: equ $-RAM_PROGRAM
+        dephase
+
+        ; *****************
+        ; * RAM Functions *
+        ; *****************
+
+RAM_FUNCTIONS_CODE:
+        phase RAM_PROGRAM
+
+        ;---------------------------------------------------------------------
+        ; Copies TVC program file from Cart ROM to RAM
+        ; Input:  HL - ROM address
+        ;         DE - RAM address
+        ;         BC - Number of bytes to copy
+        ; Output: HL - last byte address of ROM file
+        ;         DE - last address of the RAM
+        ; Destroys: HL, BC, DE, A, F
+COPY_PROGRAM_TO_RAM:
+        ; Check length
+        ld      a, b
+        or      a, c
+        ret     z                               ; Return is length is zero
+
+	; Set memory map to: U0, U1, U2, CART
+	ld	a, P_U0_U1_U2_CART
+        ld      (P_SAVE), a
+        out     (PAGE_REG), a
+
+        ; determine ROM page index
+        ld      a, h
+        srl     a                               ; Divide by 64 (for the page address)
+        srl     a
+        srl     a
+        srl     a
+        srl     a
+        srl     a
+
+        ld      (CURRENT_PAGE_INDEX), a
+
+        ; set page index
+        call    CHANGE_ROM_PAGE
+
+        ; convert ROM address to CART address
+        ld      a, high(CART_START_ADDRESS)
+        or      h
+        ld      h, a
+
+PROGRAM_COPY_LOOP:
+        ldi                                     ; copy byte
+
+        ; check remaining bytes
+        jp      po, END_PROGRAM_COPY
+
+        ; check for page switch
+        ld      a, h
+        cp      high(PAGE0_SELECT)
+        jr      c, PROGRAM_COPY_LOOP
+
+        ld      a,  l
+        cp      low(PAGE0_SELECT)
+        jr      c, PROGRAM_COPY_LOOP
+
+        ; page end reached -> switch page
+        ld      a, (CURRENT_PAGE_INDEX)
+        inc     a
+        ld      (CURRENT_PAGE_INDEX), a
+
+        call    CHANGE_ROM_PAGE
+
+        ; update page ROM address
+        ld      hl, PAGE_DATA_START_ADDRESS
+
+        jr      PROGRAM_COPY_LOOP
+       
+END_PROGRAM_COPY:
+        ld      a, (PAGE0_SELECT)               ; Select PAGE0
+        ret
+
+        ;---------------------------------------------------------------------
+        ; Changes ROM page according current page index (CURRENT_PAGE_INDEX) variable
+CHANGE_ROM_PAGE:
+        push    hl                              ; Save ROM address
+        ld      a, (CURRENT_PAGE_INDEX)
+        ld      hl, PAGE0_SELECT
+        or      l
+        ld      l, a
+        ld      a,  (hl)                        ; Change page
+        pop     hl
+        
+        ret
+
+        ;---------------------------------------------------------------------
+        ; Starts Basic program for 1.x ROM
+BASIC_RUN:
+        ; Set memory map to: U0, U1, U2, SYS
+	ld	a, P_U0_U1_U2_SYS
+        ld      (P_SAVE), a
+        out     (PAGE_REG), a
+		
+	; enable interrupts
+	ei
+		
+	; execute RUN command
+	ld	hl, (1722h)
+	jp	0de23h
+
+        ;---------------------------------------------------------------------
+        ; Passing System Function call to ROM
+SYSTEM_FUNCTON_PASS:
+        ld      a,P_U0_U1_U2_SYS            ; Page in ROM
+        ld      (P_SAVE),a
+        out     (PAGE_REG),a
+
+SYSTEM_FUNCTION_CHAIN_ADDRESS:
+        jp      0                           ; Jump to ROM (address will be updates when code is copied to RAM)
+
+	
+RAM_FUNCTIONS_CODE_LENGTH: equ $-RAM_PROGRAM
+	dephase
+
+        ; ************************
+        ; * System function call *
+        ; ************************
+
+SYSTEM_FUNCTION_CALLER_CODE:
+        phase SYSTEM_FUNCTION_CALLER
+
+        ; *** System function caller
+        ex (sp),hl                          ; Get return address
+        ld a,(hl)                           ; Get function code
+        inc hl                              ; Increment return address
+        ex (sp),hl                          ; Store return address
+        ex af,af'                           ; Save fuction code to AF'
+        push af                             ; and store original AF' to stack
+
+        ld a,(P_SAVE)                       ; Save memory pageing settings
+        push af                             ; to stack
+
+        ld A,P_U0_U1_U2_CART                ; Set paging to U0-U1-U2-CART
+        ld (P_SAVE),a
+        out (PAGE_REG),a
+
+        jp SYSTEM_FUNCTION                  ; Call New System Function
+
+SYSTEM_FUNCTION_RETURN:
+        ex af,af'
+        pop af
+
+        ld (P_SAVE),a                       ; Restore paging
+        out (PAGE_REG),a
+        pop af
+        ex af,af'
+        ret
+
+SYSTEM_FUNCTION_CALLER_CODE_LENGTH equ $-SYSTEM_FUNCTION_CALLER
+        dephase

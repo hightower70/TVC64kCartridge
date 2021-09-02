@@ -1,0 +1,369 @@
+        .include "definitions.a80"
+
+        org     CART_START_ADDRESS
+        db      "MOPS"
+
+        ;---------------------------------------------------------------------
+        ; Main program entry point. Intializes cart program
+ENTRY:
+        ld      a, (PAGE0_SELECT)               ; Change to Page0
+        jp      MAIN                            ; Jump to initialization
+        db      SW_MAJOR_VERSION                ; Major version number
+        db      SW_MINOR_VERSION                ; Minor version number
+
+        ; Initialize cart program
+MAIN:
+        ; Set memory map to: U0, U1, U2, CART
+        ld      a, P_U0_U1_U2_CART
+        ld      (P_SAVE), a
+        out     (PAGE_REG), a
+
+        push    de                              ; save returning address for 2.x ROM
+
+        ; Copy RAM data
+        ld      hl, RAM_DATA_STORAGE
+        ld      de, RAM_DATA
+        ld      bc, RAM_DATA_LENGTH
+        ldir
+
+        ; calculate returning address for 2.x ROM
+        pop     hl                              ; restore returning address        
+	ld	de, -22
+	add     hl, de
+	ld      (ROM_RETURN_ADDRESS), hl
+		
+        ; Copy BASINIT program to the RAM
+        ld	hl, BASIC_INITIALIZE_CODE
+	ld	de, RAM_PROGRAM
+	ld	bc, BASIC_INITIALIZE_CODE_LENGTH
+	ldir
+		
+	; call BASIC area initialize and version detection
+	call	BASIC_INITIALIZE
+
+        ; Copy RAM code
+        ld      hl, RAM_FUNCTIONS_CODE
+        ld      de, RAM_PROGRAM
+        ld      bc, RAM_FUNCTIONS_CODE_LENGTH
+        ldir
+
+        ; *** Chain system function call
+
+        ; Copy ROM entry address of the system function call
+        ld      HL, (SYSTEM_FUNCTION_ROM_ENTRY_ADDRESS)
+        ld      (SYSTEM_FUNCTION_CHAIN_ADDRESS+1), HL
+
+        ; Overwrite original system call code
+        ld      HL, SYSTEM_FUNCTION_CALLER_CODE
+        ld      DE, SYSTEM_FUNCTION_CALLER
+        ld      BC, SYSTEM_FUNCTION_CALLER_CODE_LENGTH
+        ldir
+
+        ; *** Load and Start the first program from the ROM filesystem ***
+        call    GET_FILE_SYSTEM_INFO
+
+        ld      de, CART_MAX_FILENAME_LENGTH    ; Skip filename
+        add     hl, de
+        ld      e,  (hl)                        ; Load address
+        inc     hl
+        ld      d,  (hl)
+        inc     hl
+        ld      c,  (hl)                        ; Load length
+        inc     hl
+        ld      b,  (hl)
+        
+        ld      l, e
+        ld      h, d
+	ld	de, BASIC_PROGRAM_START
+
+	call    COPY_PROGRAM_TO_RAM
+
+	; setup BASIC program location
+        ld	hl, BASIC_PROGRAM_START
+	ld	(1720h), hl
+	ld	(1722h), hl
+
+	; Start program
+	ld	a,(BASIC_VERSION)
+	cp	1
+	jp	z, BASIC_RUN
+
+        ; Start program routine for 2.x version rom	
+        ; set BASIC flag to no start screen, no prompt, no new command and autostart
+        ld	a, 0fh
+        ld	(BASIC_FLAG), a
+
+	; load return address
+	ld	hl,(ROM_RETURN_ADDRESS)
+				
+	; Set memory map to: SYS, U1, U2, CART
+	ld	a, P_SYS_U1_U2_CART
+        ld      (P_SAVE), A
+        out     (PAGE_REG), A
+
+	; return back to ROM
+	jp	(hl)        
+
+        ;------------------------------------
+        ; Load file system area area address
+        ; Input: -
+        ; Output: HL - File system area address depending on the basic version
+        ;          A - Number of files in the file system
+        ; Destroys: A, F
+GET_FILE_SYSTEM_INFO:
+        ld      a, (BASIC_VERSION)
+        cp      a, 1
+        jr      z, SET_VERSION1x_FILE_SYSTEM
+        
+        ld      hl, (FILE_SYSTEM.DIRECTORY2x_ADDRESS)       ; File system for 2.x ROM
+        
+        ld      a, high(CART_START_ADDRESS)                 ; Convert ROM address to CART address
+        or      h
+        ld      h, a        
+
+        ld      a, (FILE_SYSTEM.FILES2x_COUNT)              ; Get file count
+        ret
+
+SET_VERSION1x_FILE_SYSTEM:        
+        ld      hl, (FILE_SYSTEM.DIRECTORY1x_ADDRESS)       ; File system for 1.x ROM
+
+        ld      a, high(CART_START_ADDRESS)                 ; Convert ROM address to CART address
+        or      h
+        ld      h, a        
+
+        ld      a, (FILE_SYSTEM.FILES1x_COUNT)              ; Get file count
+        ret
+
+       ;---------------------------------------------------------------------
+       ; System function handler
+SYSTEM_FUNCTION:
+        ex      af,af'                      ; Get function code to AF
+        push    af                          ; Save it on stack
+
+        and     SYSTEM_FUNCTION_CLASS_MASK  ; Check if it is cassette class
+        cp      CAS_FUNCTION_CLASS
+        jp      z, HANDLE_CAS_FUNCTIONS
+
+        pop     af                          ; Not cassette function, restore function code
+
+NOT_KNOWN_CAS_FUNCTION:
+        ex      af,af'                      ; Restore function code to AF'
+        jp      SYSTEM_FUNCTON_PASS         ; and continus with the original ROM routine
+
+HANDLE_CAS_FUNCTIONS:
+        pop     af                          ; Restore function code
+        push    hl                          ; Save HL
+
+        ; Determine CAS function
+        cp      a, CAS_FN_OPEN
+        jp      z, CAS_OPEN
+
+        cp      a, CAS_FN_CHIN
+        jp      z, CAS_CH_IN
+
+        cp      a, CAS_FN_BKIN
+        jp      z, CAS_BKIN
+
+        cp      a, CAS_FN_CLOSE_RD
+        jp      z, CAS_CLOSE_RD
+
+        pop     hl                          ; Restore HL
+        jp      NOT_KNOWN_CAS_FUNCTION
+
+        ;*********************************************************************
+        ;* Cassette Functions
+        ;*********************************************************************
+
+        ;---------------------------------------------------------------------
+        ; Casette: Open file
+        ; Input:  DE - file name pointer
+        ; Output: A - status code
+        ;         DE - file name pointer
+CAS_OPEN:
+        ld      l, e                        ; File name pointer
+        ld      h, d
+
+        ; Convert file name to uppercase
+        ld      b,  (hl)                    ; File name length
+        inc     hl
+
+FILENAME_TOUPPER_LOOP:
+        ld      a,  (hl)                    ; load character
+        cp      a, 'a'
+        jr      c, STORE_FILENAME_CHARACTER
+        cp      a, 'z' + 1
+        jr      nc, FILENAME_CHECK_ACCENTED_CHARACTERS
+        and     $df                         ; letter to upercase
+        jr      STORE_FILENAME_CHARACTER
+
+FILENAME_CHECK_ACCENTED_CHARACTERS:        
+        cp      a, $90                      ; accented letters
+        jr      c, STORE_FILENAME_CHARACTER
+        cp      a, $99
+        jr      nc, STORE_FILENAME_CHARACTER
+        sub     a, $10
+
+STORE_FILENAME_CHARACTER:
+        ld      (hl), a
+        inc     hl
+        djnz    FILENAME_TOUPPER_LOOP
+
+        ; Find filename in the ROM file system
+        call    GET_FILE_SYSTEM_INFO         ; Get file system address and number of files
+        ld      c, a                         ; Number of files in the file system
+
+COMPARE_FILE_NAMES:
+        push    de                           ; save file name address
+        push    hl                           ; save file system entry address
+
+        ; get file name length to B
+        ex      hl, de                       
+        ld      b, (hl)
+        inc     hl
+        ex      hl, de
+
+COMPARE_FILENAME_CHARACTERS:
+        ld      a, (de)                      ; Compare file name characters
+        cp      (hl)
+
+        jr      nz, CHECK_NEXT_FILE          ; non matching -> next file
+
+        inc     hl
+        inc     de
+
+        djnz    COMPARE_FILENAME_CHARACTERS
+
+        ; file found -> get address and length
+        pop     bc                           ; Restore file system entry address
+        ld      hl,  FileSystemEntry.FILE_ADDRESS
+        add     hl, bc
+
+        ; store file address in CURRENT_FILE_ADDRESS
+        ld      a, (hl)
+        ld      (CURRENT_FILE_ADDRESS), a
+        inc     hl
+        ld      a, (hl)
+        ld      (CURRENT_FILE_ADDRESS+1), a
+        inc     hl
+
+        ; store file length in CURRENT_FILE_LENGTH and CAS header
+        ld      a, (hl)
+        ld      (CURRENT_FILE_LENGTH), a
+        ld      (CAS_HEADER.FileLength), a
+        inc     hl
+        ld      a, (hl)
+        ld      (CURRENT_FILE_LENGTH+1), a
+        ld      (CAS_HEADER.FileLength+1), a
+
+        xor     a                           
+        ld      (CURRENT_CAS_HEADER_POS), a ; reset CAS header pos for CH_IN
+        ld      (BUFFER), a                 ; Set non-buffered file
+
+        pop     de                          ; restore file name pointer
+        xor     a                           ; no error
+
+        jp      CAS_RETURN
+        
+CHECK_NEXT_FILE:
+        pop     hl                          ; file system entry address
+        ld      de, FileSystemEntry         ; next entry
+        add     hl, de
+        
+        pop     de                          ; file name pointer
+
+        dec     c
+        ld      a,  c
+        or      a
+        jr      nz, COMPARE_FILE_NAMES
+
+        ; file not found
+        ld      a, CAS_ERR_NO_OPEN_FILE
+
+        jp      CAS_RETURN
+
+        ;---------------------------------------------------------------------
+        ; Casette: Character input
+        ; Input: -
+        ; Output: C - character
+        ;         A - status code
+CAS_CH_IN:
+        ld      a,(CURRENT_CAS_HEADER_POS)
+        cp      CASHeader
+        jr      nc, CAS_CH_IN_EOF
+
+        ld      hl, CAS_HEADER              ; Calculate CAS header address (A+CAS_HEADER)
+        add     a, l                        ; A = A+L
+        ld      l, a                        ; L = A+L
+        adc     a, h                        ; A = A+L+H+carry
+        sub     l                           ; A = H+carry
+        ld      h, a                        ; H = H+carry
+
+        ld      c,  (hl)                    ; Load CAS header data
+
+        ld      a, (CURRENT_CAS_HEADER_POS) ; Increment CAS pointer
+        inc     a
+        ld      (CURRENT_CAS_HEADER_POS), a
+
+        xor     a                           ; success
+        jp      CAS_RETURN
+
+CAS_CH_IN_EOF:
+        ld      a, CAS_ERR_EOF        
+        jp      CAS_RETURN
+
+        ;---------------------------------------------------------------------
+        ; Casette: Block input
+        ; Input: DE - Buffer address
+        ;        BC - Length of the buffer
+        ; Output: A - status code
+CAS_BKIN:
+        ld      hl, (CURRENT_FILE_LENGTH)
+        or      a
+        sbc     hl, bc
+        jr      c, CAS_BKIN_WRONG_SIZE
+
+        ld      (CURRENT_FILE_LENGTH), hl   ; Update remaining length
+
+        ld      hl, (CURRENT_FILE_ADDRESS)  ; load file address
+        call    COPY_PROGRAM_TO_RAM
+        ld      (CURRENT_FILE_ADDRESS), hl  ; Update address
+
+        xor     a                           ; Success
+        jp      CAS_RETURN
+
+CAS_BKIN_WRONG_SIZE:
+        ld      a, CAS_ERR_INTERNAL         ; wrong byte number
+        jp      CAS_RETURN
+
+        ;---------------------------------------------------------------------
+        ; Casette: Close file (read mode)
+        ; Input: -
+        ; Output: A - status code
+CAS_CLOSE_RD:
+        xor     a
+
+        ; reset file address
+        ld      (CURRENT_FILE_ADDRESS), a
+        ld      (CURRENT_FILE_ADDRESS+1), a
+
+        ; reset file length
+        ld      (CURRENT_FILE_LENGTH), a
+        ld      (CAS_HEADER.FileLength), a
+        ld      (CURRENT_FILE_LENGTH+1), a
+        ld      (CAS_HEADER.FileLength+1), a        
+
+        jp      CAS_RETURN
+
+        ;---------------------------------------------------------------------
+        ; Returns from CAS function
+CAS_RETURN:
+        pop hl                                          ; Restore HL
+        or a                                            ; Set flags according to error code
+        jp SYSTEM_FUNCTION_RETURN
+
+
+        ; *** Other modules ***
+        include "ramfunctions.a80"
+
+        ; *** File system data ***
+FILE_SYSTEM FileSystemStruct
