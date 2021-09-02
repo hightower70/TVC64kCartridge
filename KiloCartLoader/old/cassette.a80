@@ -1,0 +1,410 @@
+HANDLE_CAS_FUNCTIONS: 
+        pop af                                          ; Reload function code
+
+        push hl                                         ; Save HL
+
+        ; Determine cassette function
+        ld hl, CAS_INPUT_FUNCTION_TABLE                 ; Load input function table
+        and ~SYSTEM_FUNCTION_CLASS_MASK                 ; Remove class bitfield
+        jp m, CAS_INPUT_FUNCION
+        ld hl, CAS_OUTPUT_FUNCTION_TABLE                ; Load output function table
+
+CAS_INPUT_FUNCION:
+        and ~SYSTEM_FUNCTION_DIRECTION_MASK             ; Remove direction flag
+
+        cp CAS_LAST_FUNCTION_CODE+1                     ; check last function code
+        jp nc, ERROR_NO_FUNCTION
+
+        ; Calculate jump table address
+        add a, a                                        ; Multiply address by two to get jump table offset
+        add l                                           ; Add offset to address
+        ld l, a
+        ld a, h
+        adc 0
+        ld h, a
+
+        ld a, (hl)                                      ; Get jump address from the table
+        inc hl
+        ld h, (hl)
+        ld l, a
+
+        jp (hl)                                         ; Jump to the function
+
+CAS_FUNCTION_RETURN:
+        pop hl                                          ; Restore HL
+        or a                                            ; Set flags according to error code
+        jp SYSTEM_FUNCTION_RETURN
+
+        ;*********************************************************************
+        ;* Cassette Functions
+        ;*********************************************************************
+
+        ;---------------------------------------------------------------------
+        ; Casette: Open file
+        ; Input: DE - file name pointer
+        ; Output: A - status code
+        ;         DE - file name pointer
+CAS_OPEN:
+        ld a, CPFN_OPEN                                 ; Function code: Open
+        call COPROC_START_COMMAND                       ; Send function  code
+
+        push de                                         ; Save file name pointer
+
+        ld h, COPROC_WRITE_HIGH
+        ld a, (de)                                      ; Load file name length
+        ld b, a                                         ; Move file name length to cycle counter
+        ld l, a
+        cp (hl)                                         ; Send file name length to coproc
+
+        or a                                            ; Check zero file name length
+        jr z, CAS_OPEN_L2
+
+        inc de                                          ; Move to the first file name character
+        call COPROC_WRITE_BLOCK                         ; Write file name to the coproc
+
+CAS_OPEN_L2:
+        pop de                                          ; restore file name pointer
+
+CAS_OPEN_L1:
+        ld a, (COPROC_READ)                             ; Wait for CoProc
+        cp SYS_ERR_BUSY
+        jr z, CAS_OPEN_L1
+
+        cp SYS_ERR_RESULT                               ; Check result code
+        jp nz, CAS_FUNCTION_RETURN                      ; if result is an error code -> return
+
+        ; result code is result data -> read result data (which is a file name)
+        push de                                         ; save again file name pointer
+
+        ld a, (COPROC_READ)                             ; Read file name length
+        ld b, a 
+        ld (de), a                                      ; Store file name length
+        inc de                                          ; Check file name length
+
+        or a
+        jr z, CAS_OPEN_L3
+
+        call COPROC_READ_BLOCK                          ; Read and store file name
+
+CAS_OPEN_L3:
+        pop de                                          ; Return file name address in DE
+
+        call COPROC_READ_BYTE                           ; Get result
+        or a
+        jp nz, CAS_FUNCTION_RETURN                      ; if result is an error code -> return
+
+        ld hl, FILE_TYPE                                ; Sets file type to buffered
+        ld (hl), BUFFERED_FILE
+
+        jp CAS_FUNCTION_RETURN                          ; Return
+
+        ;---------------------------------------------------------------------
+        ; Casette: Create file
+        ; Input: DE - file name pointer
+        ; Output: A - status code
+        ;         DE - file name pointer
+CAS_CRTE:
+        ld a, CPFN_CREATE                               ; Function code: Create
+        call COPROC_START_COMMAND                       ; Send function  code
+
+        push de                                         ; Save file name pointer
+
+        ld h, COPROC_WRITE_HIGH
+        ld a, (de)                                      ; Load file name length
+        ld b, a                                         ; Move file name length to cycle counter
+        ld l, a
+        cp (hl)                                         ; Send file name length to coproc
+
+        or a                                            ; Check zero file name length
+        jr z, CAS_CREATE_L2
+
+        inc de                                          ; Move to the first file name character
+        call COPROC_WRITE_BLOCK                         ; Write file name to the coproc
+
+CAS_CREATE_L2:
+        pop de                                          ; restore file name pointer
+
+CAS_CREATE_L1:
+        ld a, (COPROC_READ)                             ; Wait for CoProc
+        cp SYS_ERR_BUSY
+        jr z, CAS_CREATE_L1
+
+        cp SYS_ERR_RESULT                               ; Check result code
+        jp nz, CAS_FUNCTION_RETURN                      ; if result is an error code -> return
+
+        ; result code is result data -> read result data (which is a file name)
+        push de                                         ; save again file name pointer
+
+        ld a, (COPROC_READ)                             ; Read file name length
+        ld b, a 
+        ld (de), a                                      ; Store file name length
+        inc de                                          ; Check file name length
+
+        or a
+        jr z, CAS_CREATE_L3
+
+        call COPROC_READ_BLOCK                          ; Read and store file name
+
+CAS_CREATE_L3:
+        pop de                                          ; Return file name address in DE
+
+        call COPROC_READ_BYTE                           ; Get result
+        or a
+        jp nz, CAS_FUNCTION_RETURN                      ; if result is an error code -> return
+
+        ld hl, FILE_TYPE                                ; Sets file type to buffered
+        ld (hl), BUFFERED_FILE
+
+        jp CAS_FUNCTION_RETURN                          ; Return
+
+        ;---------------------------------------------------------------------
+        ; Casette: Character input
+        ; Input: -
+        ; Output: C - character
+        ;         A - status code
+CAS_CHIN:
+        ld a, CPFN_RDCH                                 ; Function code: Write character
+        call COPROC_START_COMMAND                       ; Send function  code
+
+        call COPROC_WAIT_AND_READ_STATUS                ; Read status code
+        cp SYS_ERR_RESULT                               ; Check error code
+        jp nz, CAS_FUNCTION_RETURN                      ; Return if error occured
+
+        call COPROC_READ_BYTE
+        ld c, a
+        ld a, SYS_ERR_OK
+        jp CAS_FUNCTION_RETURN                          ; Return
+
+        ;---------------------------------------------------------------------
+        ; Casette: Character output
+        ; Input: C - character to write
+        ; Output: A - status code
+CAS_CHOUT:
+        ld a, CPFN_WRCH                                 ; Function code: Write character
+        call COPROC_START_COMMAND                       ; Send function  code
+
+        ld a, c                                         ; Write character
+        call COPROC_WRITE_BYTE
+
+        call COPROC_WAIT_AND_READ_STATUS                ; Read status code
+        jp CAS_FUNCTION_RETURN                          ; Return
+
+        ;---------------------------------------------------------------------
+        ; Casette: Block input
+        ; Input: DE - Buffer address
+        ;        BC - Length of the buffer
+        ; Output: A - status code
+CAS_BKIN:
+        push bc                                         ; Save remaining byte count
+CAS_BKIN_LOOP:
+        pop bc                                          ; Restore remaining byte count
+        
+        xor a                                           ; Check if remaining byte count is higher than 256 byte
+        cp b
+        jr c, CAS_BKIN_READ_WHOLE_BLOCK                 ; If at least 256 byte needs to be readed -> read whole block
+
+        ; Read partial block (length < 256byte)
+        ld a, c                                         ; Check if there is any remaining byte
+        or a
+        jr nz, CAS_BKIN_READ_PARTIAL_BLOCK              ; If no more byte left -> return
+
+        ld a, SYS_ERR_OK                                ; return with OK
+        jp CAS_FUNCTION_RETURN                          ; If no more byte left -> return
+
+CAS_BKIN_READ_PARTIAL_BLOCK:
+        ld bc, 0                                        ; No more bytes left after this read
+        push bc
+        ld c, a                                         ; Current block length
+        jr CAS_BKIN_READ_BLOCK                          ; Read block
+
+        ; Reads whole block (256byte)
+CAS_BKIN_READ_WHOLE_BLOCK:
+        dec b                                           ; Decrement remaining bytes by 256
+        push bc                                         ; Save remaining bytes counter
+        ld c, 0                                         ; Block length is 256byte (0=256byte)
+
+        ; Read block (max. 256byte), length defined in C, target address defined in DE
+CAS_BKIN_READ_BLOCK:        
+        ld a, CPFN_RDBLK                                ; Function code: Read block
+        call COPROC_START_COMMAND                       ; Send function code
+        ld a, c                                         ; Block length (0=256 byte)
+        call COPROC_WRITE_BYTE                          ; Write byte number to coproc
+
+        call COPROC_WAIT_AND_READ_STATUS
+        cp SYS_ERR_RESULT                               ; Check error
+        jr nz, CAS_BKIN_RET                             ; Return with error code
+
+        ld b, c                                         ; Byte count -> b
+        call COPROC_READ_BLOCK                          ; Read block
+
+        jr CAS_BKIN_LOOP                                ; Continue reading bytes
+
+CAS_BKIN_RET:
+        pop bc                                          ; Remove BC from stack
+        jp CAS_FUNCTION_RETURN                          ; Return with error code
+
+        ;---------------------------------------------------------------------
+        ; Casette: Block output
+        ; Input: DE - Buffer address
+        ;        BC - Length of the buffer
+        ; Output: A - status code
+CAS_BKOUT:
+        push bc                                         ; Save remaining byte count
+
+CAS_BKOUT_LOOP:
+        pop bc                                          ; Restore remaining byte count
+        
+        xor a                                           ; Check if remaining byte count is higher than 256 byte
+        cp b
+        jr c, CAS_BKOUT_WRITE_WHOLE_BLOCK               ; If at least 256 byte needs to be written -> write whole block
+
+        ; Write partial block (length < 256byte)
+        ld a, c                                         ; Check if there is any remaining byte
+        or a
+        jr nz, CAS_BKOUT_WRITE_PARTIAL_BLOCK            ; If no more byte left -> return
+
+        ld a, SYS_ERR_OK                                ; return with OK
+        jp CAS_FUNCTION_RETURN                          ; If no more byte left -> return
+
+CAS_BKOUT_WRITE_PARTIAL_BLOCK:
+        ld bc, 0                                        ; No more bytes left after this write
+        push bc
+        ld c, a                                         ; Current block length
+        jr CAS_BKOUT_WRITE_BLOCK                        ; Read block
+
+        ; Write whole block (256byte)
+CAS_BKOUT_WRITE_WHOLE_BLOCK:
+        dec b                                           ; Decrement remaining bytes by 256
+        push bc                                         ; Save remaining bytes counter
+        ld c, 0                                         ; Block length is 256byte (0=256byte)
+
+        ; Write block (max. 256byte), length defined in C, source address defined in DE
+CAS_BKOUT_WRITE_BLOCK:        
+        ld a, CPFN_WRBLK                                ; Function code: Write block
+        call COPROC_START_COMMAND                       ; Send function code
+        ld a, c                                         ; Block length (0=256 byte)
+        call COPROC_WRITE_BYTE                          ; Write byte number to coproc
+        ld b, c
+        call COPROC_WRITE_BLOCK                         ; Write block
+        call COPROC_WAIT_AND_READ_STATUS                ; Wait for operation complette and get status
+        cp SYS_ERR_OK                                   ; Check error
+        jp z, CAS_BKOUT_LOOP                            ; If no error -> next block
+
+        pop     bc                                      ; Remove BC from stack
+        jp      CAS_FUNCTION_RETURN                     ; Return with error code
+        
+       ;---------------------------------------------------------------------
+        ; Casette: Block verify
+        ; Input: DE - Buffer address
+        ;        BC - Length of the buffer
+        ; Output: A - status code
+CAS_BKVERIFY:
+        push bc                                         ; Save remaining byte count
+
+CAS_BKVERIFY_LOOP:
+        pop bc                                          ; Restore remaining byte count
+        
+        xor a                                           ; Check if remaining byte count is higher than 256 byte
+        cp b
+        jr c, CAS_BKVERIFY_WRITE_WHOLE_BLOCK            ; If at least 256 byte needs to be written -> write whole block
+
+        ; Write partial block (length < 256byte)
+        ld a, c                                         ; Check if there is any remaining byte
+        or a
+        jr nz, CAS_BKVERIFY_WRITE_PARTIAL_BLOCK         ; If no more byte left -> return
+
+        ld a, SYS_ERR_OK                                ; return with OK
+        jp CAS_FUNCTION_RETURN                          ; If no more byte left -> return
+
+CAS_BKVERIFY_WRITE_PARTIAL_BLOCK:
+        ld bc, 0                                        ; No more bytes left after this write
+        push bc
+        ld c, a                                         ; Current block length
+        jr CAS_BKVERIFY_WRITE_BLOCK                     ; Read block
+
+        ; Write whole block (256byte)
+CAS_BKVERIFY_WRITE_WHOLE_BLOCK:
+        dec b                                           ; Decrement remaining bytes by 256
+        push bc                                         ; Save remaining bytes counter
+        ld c, 0                                         ; Block length is 256byte (0=256byte)
+
+        ; Write block (max. 256byte), length defined in C, source address defined in DE
+CAS_BKVERIFY_WRITE_BLOCK:        
+        ld a, CPFN_VYBLK                                ; Function code: Verify block
+        call COPROC_START_COMMAND                       ; Send function code
+        ld a, c                                         ; Block length (0=256 byte)
+        call COPROC_WRITE_BYTE                          ; Write byte number to coproc
+        ld b, c
+        call COPROC_WRITE_BLOCK                         ; Write block
+        call COPROC_WAIT_AND_READ_STATUS                ; Wait for operation complette and get status
+        cp SYS_ERR_OK                                   ; Check error
+        jp z, CAS_BKVERIFY_LOOP                         ; If no error -> next block
+
+        pop     bc                                      ; Remove BC from stack
+        jp      CAS_FUNCTION_RETURN                     ; Return with error code
+
+        ;---------------------------------------------------------------------
+        ; Casette: Close file (read mode)
+        ; Input: -
+        ; Output: A - status code
+CAS_CLOSE_RD:
+        ld      a, CPFN_RDCLOSE                         ; Function code: Close read mode
+        call    COPROC_START_COMMAND                    ; Send function  code
+
+        call    COPROC_WAIT_AND_READ_STATUS             ; Read status code
+        jp      CAS_FUNCTION_RETURN                     ; Return
+
+        ;---------------------------------------------------------------------
+        ; Casette: Close file (write mode)
+        ; Input: -
+        ; Output: A - status code
+CAS_CLOSE_WR:
+        ld      a, CPFN_WRCLOSE                         ; Function code: Close write mode
+        call    COPROC_START_COMMAND                    ; Send function  code
+
+        call    COPROC_WAIT_AND_READ_STATUS             ; Read status code
+        jp      CAS_FUNCTION_RETURN                     ; Return
+
+        ;---------------------------------------------------------------------
+        ; Error handler of invalid function call
+ERROR_NO_FUNCTION:
+        pop     hl                                       ; Restore HL
+        ld      a, SYS_ERR_NO_FUNCTION                   ; Invalid function result
+        or      a                                        ; Set flags based on result code
+        jp      SYSTEM_FUNCTION_RETURN
+
+        ;*********************************************************************
+        ;* Tables
+        ;*********************************************************************
+
+        ;---------------------------------------------------------------------
+        ; Casette input function addresses
+CAS_INPUT_FUNCTION_TABLE:
+        dw      ERROR_NO_FUNCTION
+        dw      CAS_CHIN
+        dw      CAS_BKIN
+        dw      CAS_OPEN
+        dw      CAS_CLOSE_RD
+        dw      CAS_BKVERIFY
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+
+        ;---------------------------------------------------------------------
+        ; Casette output function addresses
+CAS_OUTPUT_FUNCTION_TABLE:
+        dw      ERROR_NO_FUNCTION
+        dw      CAS_CHOUT
+        dw      CAS_BKOUT
+        dw      CAS_CRTE
+        dw      CAS_CLOSE_WR
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION
+        dw      ERROR_NO_FUNCTION

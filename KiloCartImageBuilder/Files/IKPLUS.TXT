@@ -1,0 +1,12 @@
+International Karate Plus TVC 64K
+By Doberdo Brothers 2019
+
+Files:
+START.cas		11.263
+IKPLUS.cas		42.255
+IKSONG.cas		 3.627
+
+IKPLUS.dsk		368.640
+IK_PLUS_TVC.pdf		279.035
+IK_PLUS_TVC.txt	    	    212
+.

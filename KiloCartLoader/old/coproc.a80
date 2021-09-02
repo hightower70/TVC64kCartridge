@@ -1,0 +1,81 @@
+
+        ;*********************************************************************
+        ;* CoProc Functions
+        ;*********************************************************************
+
+        ;---------------------------------------------------------------------
+        ; Start coproc command communication
+        ; Input: A - Command function code
+        ; Destroys: A, HL
+COPROC_START_COMMAND:
+        ld      l, a                            ; Function code
+        ld      a, (COPROC_INT)                 ; Start coproc communication
+        ld      h, COPROC_WRITE_HIGH
+        ld      a, (hl)                         ; Write function code
+
+        ret
+
+        ;---------------------------------------------------------------------
+        ; Reads byte from the coproc
+        ; Input: -
+        ; Return: A - Result byte
+        ; Destroys: HL, F
+COPROC_READ_BYTE:
+        ld      a,(COPROC_READ)                 ; Read from CoProc
+        ret
+
+        ;---------------------------------------------------------------------
+        ; Write byte to the coproc
+        ; Input: A - Byte to write
+        ; Destroys: HL, F
+COPROC_WRITE_BYTE:
+        ld      l, a                            ; Byte to write
+        ld      h, COPROC_WRITE_HIGH
+        cp      (hl)                            ; Write byte to CoProc
+
+        ret
+
+        ;---------------------------------------------------------------------
+        ; Waits for CoProc and returns the status code
+        ; Input: -
+        ; Output: A - Status code
+        ; Destroys: A, F
+COPROC_WAIT_AND_READ_STATUS:
+        ld      a, (COPROC_READ)                ; Wait for CoProc
+        cp      SYS_ERR_BUSY
+        jr      z, COPROC_WAIT_AND_READ_STATUS
+        ret
+
+        ;---------------------------------------------------------------------
+        ; Read from coprocessor and write it to the buffer.
+        ; Input: B - Number of bytes to read
+        ;        DE - buffer address
+        ; Output: -
+        ; Destroys: DE, HL, B, A, F
+COPROC_READ_BLOCK:
+        ld      hl, COPROC_READ
+
+COPRC_READ_L1:
+        ld      a,(hl)
+        ld      (de), a
+        inc     de
+        djnz    COPRC_READ_L1
+
+        ret 
+
+        ;---------------------------------------------------------------------
+        ; Write buffer content to the coprocessor. 
+        ; Input: DE - buffer pointer
+        ;        B - number of bytes to write
+        ; Destroys DE, HL, B, A, F
+COPROC_WRITE_BLOCK:
+        ld      h, COPROC_WRITE_HIGH
+
+COPROC_WRITE_L1:
+        ld      a,(de)                          ; Load data to write in L
+        ld      l, a
+        ld      a, (hl)                         ; Write data to the CoProc
+        inc     de                              ; Increment buffer address
+        djnz    COPROC_WRITE_L1                 ; Loop for remaining bytes
+
+        ret 
