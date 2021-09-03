@@ -107,6 +107,25 @@ void GetFileNameWithoutExtension(wchar_t* out_file_name, wchar_t* in_path)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Gets extension from full file name
+void GetExtension(wchar_t* out_extension, wchar_t* in_path)
+{
+	wchar_t* extension_pos;
+
+	*out_extension = '\0';
+
+	// determine end of the filename
+	extension_pos = wcsrchr(in_path, '.');
+	if (extension_pos != NULL)
+	{
+		extension_pos++; // skip .
+	
+		// copy extension
+		wcscpy_s(out_extension, MAX_PATH_LENGTH, extension_pos);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // Convert PC filename to TVC filename
 void PCToTVCFilename(char* out_tvc_file_name, wchar_t* in_file_name)
 {

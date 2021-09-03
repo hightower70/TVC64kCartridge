@@ -18,6 +18,12 @@
     <ClCompile Include="Source Files\CharMap.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source Files\ZX7Compress.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\ZX7Optimize.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Include Files\CASFile.h">

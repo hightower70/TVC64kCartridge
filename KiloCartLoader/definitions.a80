@@ -1,4 +1,6 @@
 
+DECOMPRESSOR_ENABLED EQU 0
+
 ; Cartridge start memory address
 CART_START_ADDRESS      equ $C000
 PAGE_DATA_START_ADDRESS equ $c007

@@ -31,6 +31,7 @@ void WriteBlock(FILE* in_file, void* in_buffer, int in_size, bool* inout_success
 void GetFileNameAndExtension(wchar_t* out_file_name, int in_buffer_length, wchar_t* in_path);
 void GetFileNameWithoutExtension(wchar_t* out_file_name, wchar_t* in_path);
 void ChangeFileExtension(wchar_t* in_file_name, int in_buffer_length, wchar_t* in_extension);
+void GetExtension(wchar_t* out_extension, wchar_t* in_path);
 
 bool StringStartsWith(const wchar_t* in_string, const wchar_t* in_prefix);
 

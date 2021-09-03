@@ -20,6 +20,7 @@
 #include <Windows.h>
 #include <CASFile.h>
 #include <FileUtils.h>
+#include "ZX7Compress.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Constants
@@ -30,6 +31,7 @@
 #define ROM_PAGE_CHANGE_ADDRESS 0x3ffc
 
 #define PRINT_ERROR(...) fwprintf (stderr, __VA_ARGS__)
+#define PRINT_INFO(...) fwprintf (stdout, __VA_ARGS__)
 
 ///////////////////////////////////////////////////////////////////////////////
 // Types
@@ -40,7 +42,7 @@ typedef struct
 	int ROMAddress;
 	int Length;
 	bool Version2xFile;
-} CASFileInfo;
+} ProgramFileInfo;
 
 #pragma pack(push, 1)
 
@@ -65,7 +67,7 @@ typedef struct
 ///////////////////////////////////////////////////////////////////////////////
 // Function prototypes
 bool LoadFiles(void);
-bool CASLoad(CASFileInfo* inout_cas_file);
+bool LoadProgramFile(ProgramFileInfo* inout_cas_file);
 bool CreateROMImage(void);
 bool CreateROMLoader();
 bool CreateROMDirectory();
@@ -83,7 +85,7 @@ int g_file_buffer_length;
 byte g_rom_image[FILE_BUFFER_SIZE];
 int g_rom_image_address;
 
-CASFileInfo g_file_info[MAX_FILE_NUMBER];
+ProgramFileInfo g_file_info[MAX_FILE_NUMBER];
 int g_file_info_count;
 
 bool g_compressed_mode = false;
@@ -103,6 +105,10 @@ int wmain(int argc, wchar_t** argv)
 	wchar_t output_file_name[MAX_PATH_LENGTH];
 	FILE* output_file = NULL;
 
+	// intro
+	PRINT_INFO(L"\nROM Image Builder for 64k TV Computer Cartridge v0.1");
+	PRINT_INFO(L"\n(c) 2021 Laszlo Arvai");
+
 	// default output file name
 	wcscpy_s(output_file_name, MAX_PATH_LENGTH, L"KiloCart.bin");
 
@@ -121,6 +127,11 @@ int wmain(int argc, wchar_t** argv)
 				// output file name
 			case 'o':
 
+				break;
+
+			// force compressed mode
+			case 'c':
+				g_compressed_mode = true;
 				break;
 
 			case 'h':
@@ -174,56 +185,74 @@ bool LoadFiles()
 
 	for (i = 0; i < g_file_info_count && success; i++)
 	{
-		success = CASLoad(&g_file_info[i]);
+		success = LoadProgramFile(&g_file_info[i]);
 	}
 
 	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Loads CAS file
-bool CASLoad(CASFileInfo* inout_cas_file)
+// Load program file
+bool LoadProgramFile(ProgramFileInfo* inout_program_file)
 {
-	FILE* cas_file = NULL;
+	FILE* program_file = NULL;
 	bool success = true;
 	CASUPMHeaderType upm_header;
 	CASProgramFileHeaderType program_header;
-	wchar_t buffer[MAX_PATH_LENGTH];
+	wchar_t display_filename[MAX_PATH_LENGTH];
+	wchar_t file_extension[MAX_PATH_LENGTH];
+	bool cas_file_type = true;
 
 	// convert and copy file name
-	GetFileNameAndExtension(buffer, MAX_PATH_LENGTH, inout_cas_file->Filename);
-	PRINT_ERROR(L"\nLoading: %s", buffer);
+	GetFileNameAndExtension(display_filename, MAX_PATH_LENGTH, inout_program_file->Filename);
+	PRINT_INFO(L"\nLoading: %s", display_filename);
 
-	// open CAS file
-	if (_wfopen_s(&cas_file, inout_cas_file->Filename, L"rb") != 0)
+	// determine file type by extension
+	GetExtension(file_extension, display_filename);
+	if (_wcsicmp(file_extension, L"CAS") != 0)
+		cas_file_type = false;
+
+	// open program file
+	if (_wfopen_s(&program_file, inout_program_file->Filename, L"rb") != 0 || program_file == NULL)
 	{
 		PRINT_ERROR(L"\nCan't open file!");
 		return false;
 	}
 
-	// load UPM header
-	ReadBlock(cas_file, &upm_header, sizeof(upm_header), &success);
-
-	// load program header
-	ReadBlock(cas_file, &program_header, sizeof(program_header), &success);
-
-	// Check validity
-	if (!CASCheckHeaderValidity(&program_header))
+	if (cas_file_type)
 	{
-		PRINT_ERROR(L"\nInvalid file!");
-		success = false;
+		// load UPM header
+		ReadBlock(program_file, &upm_header, sizeof(upm_header), &success);
+
+		// load program header
+		ReadBlock(program_file, &program_header, sizeof(program_header), &success);
+
+		// Check validity
+		if (!CASCheckHeaderValidity(&program_header))
+		{
+			PRINT_ERROR(L"\nInvalid file!");
+			success = false;
+		}
+
+		if (!CASCheckUPMHeaderValidity(&upm_header))
+		{
+			PRINT_ERROR(L"\nInvalid file!");
+			success = false;
+		}
 	}
-
-	if (!CASCheckUPMHeaderValidity(&upm_header))
+	else
 	{
-		PRINT_ERROR(L"\nInvalid file!");
-		success = false;
+		// detrmine length
+		fseek(program_file, 0, SEEK_END);
+
+		program_header.FileLength = (uint16_t)ftell(program_file);
+		fseek(program_file, 0, SEEK_SET);
 	}
 
 	// check size
 	if (success)
 	{
-		if (g_file_buffer_length >= FILE_BUFFER_SIZE)
+		if (g_file_buffer_length + program_header.FileLength >= FILE_BUFFER_SIZE)
 		{
 			PRINT_ERROR(L"\nToo many file specified!");
 			success = false;
@@ -233,14 +262,14 @@ bool CASLoad(CASFileInfo* inout_cas_file)
 	// load program data
 	if (success)
 	{
-		ReadBlock(cas_file, g_file_buffer + g_file_buffer_length, program_header.FileLength, &success);
+		ReadBlock(program_file, g_file_buffer + g_file_buffer_length, program_header.FileLength, &success);
 
 		if (success)
 		{
-			inout_cas_file->Length = program_header.FileLength;
-			inout_cas_file->BufferPos = g_file_buffer_length;
+			inout_program_file->Length = program_header.FileLength;
+			inout_program_file->BufferPos = g_file_buffer_length;
 			g_file_buffer_length += program_header.FileLength;
-			inout_cas_file->ROMAddress = 0;
+			inout_program_file->ROMAddress = 0;
 		}
 		else
 		{
@@ -250,8 +279,8 @@ bool CASLoad(CASFileInfo* inout_cas_file)
 	}
 	
 	// close file
-	if (cas_file != NULL)
-		fclose(cas_file);
+	if (program_file != NULL)
+		fclose(program_file);
 
 	return success;
 }
@@ -261,7 +290,6 @@ bool CASLoad(CASFileInfo* inout_cas_file)
 bool CreateROMImage(void)
 {
 	bool success = true;
-	g_compressed_mode = false;
 
 	do
 	{
@@ -284,8 +312,16 @@ bool CreateROMImage(void)
 		// check if image is fit into the ROM
 		if (success && g_rom_image_address >= CART_ROM_SIZE)
 		{
-			// try compressed mode
-			g_compressed_mode = true;
+			if (g_compressed_mode)
+			{
+				PRINT_ERROR(L"\nCartridge memory is too low!");
+				success = false;
+			}
+			else
+			{
+				// try compressed mode
+				g_compressed_mode = true;
+			}
 		}
 		else
 		{
@@ -294,10 +330,15 @@ bool CreateROMImage(void)
 				success = CreateROMDirectory();
 		}
 
-	} while (g_rom_image_address >= CART_ROM_SIZE && success && !g_compressed_mode);
+	} while (success && g_rom_image_address >= CART_ROM_SIZE);
 
-	// display info
-	PRINT_ERROR(L"\nCartridge ROM statistics: %d bytes used, %d bytes free (%d total bytes)", g_rom_image_address, CART_ROM_SIZE - g_rom_image_address, CART_ROM_SIZE);
+	// display statistics
+	if (g_compressed_mode)
+		PRINT_INFO(L"\nCompressed mode statistic:");
+	else
+		PRINT_INFO(L"\nStorege statistics:");
+
+	PRINT_INFO(L" %d bytes used, %d bytes free (%d total bytes)", g_rom_image_address, CART_ROM_SIZE - g_rom_image_address, CART_ROM_SIZE);
 
 	// fill remaining bytes with FFH
 	if (success)
@@ -316,8 +357,14 @@ bool CreateROMImage(void)
 bool CreateROMLoader()
 {
 	FILE* loader_file = NULL;
+	wchar_t* loader_name;
 
-	if (_wfopen_s(&loader_file, L"kilocartloader.bin", L"rb") != 0)
+	if (g_compressed_mode)
+		loader_name = L"kilocartloader_compressed.bin";
+	else
+		loader_name = L"kilocartloader.bin";
+
+	if (_wfopen_s(&loader_file, loader_name, L"rb") != 0)
 	{
 		PRINT_ERROR(L"\nCan't open file!");
 		return false;
@@ -409,7 +456,10 @@ bool CreateROMFileSystem()
 {
 	int j;
 	int byte_count;
-	int file_buffer_pos;
+	uint8_t* compressed_data = NULL;
+	size_t compressed_size = 0;
+	int length;
+	uint8_t* source;
 
 	// generate files in the ROM
 	for (int i = 0; i < g_file_info_count; i++)
@@ -434,9 +484,20 @@ bool CreateROMFileSystem()
 			// update ROM address
 			g_file_info[i].ROMAddress = g_rom_image_address;
 
+			if (g_compressed_mode)
+			{
+				compressed_data = ZX7Compress(ZX7Optimize(g_file_buffer + g_file_info[i].BufferPos, g_file_info[i].Length), g_file_buffer + g_file_info[i].BufferPos, g_file_info[i].Length, &compressed_size);
+				length = (int)compressed_size;
+				source = compressed_data;
+			}
+			else
+			{
+				source = (uint8_t*)(g_file_buffer + g_file_info[i].BufferPos);
+				length = g_file_info[i].Length;
+			}
+
 			// copy file to the ROM image
-			file_buffer_pos = g_file_info[i].BufferPos;
-			for (byte_count = 0; byte_count < g_file_info[i].Length; byte_count++)
+			for (byte_count = 0; byte_count < length; byte_count++)
 			{
 				if ((g_rom_image_address % CART_PAGE_SIZE) >= ROM_PAGE_CHANGE_ADDRESS)
 				{
@@ -451,7 +512,13 @@ bool CreateROMFileSystem()
 					g_rom_image_address += sizeof(g_page_start_bytes);
 				}
 
-				g_rom_image[g_rom_image_address++] = g_file_buffer[file_buffer_pos++];
+				g_rom_image[g_rom_image_address++] = *source;
+				source++;
+			}
+
+			if(g_compressed_mode)
+			{
+				free(compressed_data);
 			}
 		}
 	}
