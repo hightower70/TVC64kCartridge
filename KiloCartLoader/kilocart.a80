@@ -8,6 +8,9 @@
 ENTRY:
         ld      a, (PAGE0_SELECT)               ; Change to Page0
         jp      MAIN                            ; Jump to initialization
+
+        db      "KILOCART"
+
         db      SW_MAJOR_VERSION                ; Major version number
         db      SW_MINOR_VERSION                ; Minor version number
 
@@ -20,44 +23,42 @@ MAIN:
 
         push    de                              ; save returning address for 2.x ROM
 
-        ; Copy RAM data
-        ld      hl, RAM_DATA_STORAGE
-        ld      de, RAM_DATA
-        ld      bc, RAM_DATA_LENGTH
-        ldir
-
-        ; calculate returning address for 2.x ROM
-        pop     hl                              ; restore returning address        
-	ld	de, -22
-	add     hl, de
-	ld      (ROM_RETURN_ADDRESS), hl
-		
         ; Copy BASINIT program to the RAM
-        ld	hl, BASIC_INITIALIZE_CODE
-	ld	de, RAM_PROGRAM
-	ld	bc, BASIC_INITIALIZE_CODE_LENGTH
+        ld	hl, RAM_FUNCTIONS_STORAGE
+	ld	de, RAM_FUNCTIONS
+	ld	bc, RAM_FUNCTIONS_CODE_LENGTH
 	ldir
-		
+
 	; call BASIC area initialize and version detection
 	call	BASIC_INITIALIZE
 
-        ; Copy RAM code
-        ld      hl, RAM_FUNCTIONS_CODE
-        ld      de, RAM_PROGRAM
-        ld      bc, RAM_FUNCTIONS_CODE_LENGTH
-        ldir
+        ; calculate returning address for 2.x ROM
+        pop     de                              ; restore returning address for 2.x ROM
+	ld	hl, -22
+	add     hl, de
+	ld      (ROM_RETURN_ADDRESS), hl
 
         ; *** Chain system function call
+
+        ; Copy system function pass (return to original ROM function) code to RAM
+        ld      HL, SYSTEM_FUNCTION_PASS_STORAGE
+        ld      DE, SYSTEM_FUNCTION_PASS
+        ld      BC, SYSTEM_FUNCTION_PASS_CODE_LENGTH
+        ldir
 
         ; Copy ROM entry address of the system function call
         ld      HL, (SYSTEM_FUNCTION_ROM_ENTRY_ADDRESS)
         ld      (SYSTEM_FUNCTION_CHAIN_ADDRESS+1), HL
 
-        ; Overwrite original system call code
-        ld      HL, SYSTEM_FUNCTION_CALLER_CODE
-        ld      DE, SYSTEM_FUNCTION_CALLER
-        ld      BC, SYSTEM_FUNCTION_CALLER_CODE_LENGTH
+        ; Overwrite system function caller RAM code
+        ld      hl, SYSTEM_FUNCTION_CALLER_STORAGE
+        ld      de, SYSTEM_FUNCTION_CALLER
+        ld      bc, SYSTEM_FUNCTION_CALLER_CODE_LENGTH
         ldir
+
+        ; No ROM file is opened
+        ld      a, 0
+        ld      (FILE_OPENED_FLAG), a
 
         ; *** Load and Start the first program from the ROM filesystem ***
         call    GET_FILE_SYSTEM_INFO
@@ -84,9 +85,9 @@ MAIN:
 	ld	(1722h), hl
 
 	; Start program
-	ld	a,(BASIC_VERSION)
-	cp	1
-	jp	z, BASIC_RUN
+	ld	a,(VERSION)
+	or      a
+	jp	z, BASIC_RUN_1x
 
         ; Start program routine for 2.x version rom	
         ; set BASIC flag to no start screen, no prompt, no new command and autostart
@@ -111,8 +112,8 @@ MAIN:
         ;          A - Number of files in the file system
         ; Destroys: A, F
 GET_FILE_SYSTEM_INFO:
-        ld      a, (BASIC_VERSION)
-        cp      a, 1
+        ld      a, (VERSION)
+        or      a
         jr      z, SET_VERSION1x_FILE_SYSTEM
         
         ld      hl, (FILE_SYSTEM.DIRECTORY2x_ADDRESS)       ; File system for 2.x ROM
@@ -148,7 +149,7 @@ SYSTEM_FUNCTION:
 
 NOT_KNOWN_CAS_FUNCTION:
         ex      af,af'                      ; Restore function code to AF'
-        jp      SYSTEM_FUNCTON_PASS         ; and continus with the original ROM routine
+        jp      SYSTEM_FUNCTION_PASS        ; and continus with the original ROM routine
 
 HANDLE_CAS_FUNCTIONS:
         pop     af                          ; Restore function code
@@ -180,11 +181,25 @@ HANDLE_CAS_FUNCTIONS:
         ; Output: A - status code
         ;         DE - file name pointer
 CAS_OPEN:
-        ld      l, e                        ; File name pointer
+        ; Check if ROM file is already opened
+        ld      a, (FILE_OPENED_FLAG)
+        or      a
+        jr      z, CHECK_FILE_NAME
+
+        ; file already opened
+        ld      a, CAS_ERR_ALREADY_OPENED
+        jp      CAS_RETURN
+
+CHECK_FILE_NAME:
+        ld      l, e                        ; HL = File name pointer
         ld      h, d
+        push    de                          ; save file name pointer
+        ld      de, FILE_NAME_BUFFER        ; temporary file name storage
 
         ; Convert file name to uppercase
-        ld      b,  (hl)                    ; File name length
+        ld      a,  (hl)                    ; load file name length
+        ld      (FILE_NAME_LENGTH), a       ; save file name length
+        ld      b, a                        ; b = file name length
         inc     hl
 
 FILENAME_TOUPPER_LOOP:
@@ -204,23 +219,57 @@ FILENAME_CHECK_ACCENTED_CHARACTERS:
         sub     a, $10
 
 STORE_FILENAME_CHARACTER:
-        ld      (hl), a
+        ld      (de), a
+        inc     de
         inc     hl
         djnz    FILENAME_TOUPPER_LOOP
 
+        ; append '.CAS' if there is no extension
+        ld      a, (FILE_NAME_LENGTH)
+        ld      b, a
+        ld      hl, FILE_NAME_BUFFER
+
+FIND_EXTENSION:
+        ld      a, (hl)
+        inc     hl
+        cp      a, '.'
+        jr      z, FIND_FILE_NAME
+
+        djnz    FIND_EXTENSION
+
+        ; no extension, append '.CAS' if buffer is long enough
+        ld      a, (FILE_NAME_LENGTH)
+        cp      a, CART_MAX_FILENAME_LENGTH - CAS_EXTENSION_LENGTH + 1
+        jr      nc, FIND_FILE_NAME
+
+        ; append extension
+        ld      e, a
+        add     a, CAS_EXTENSION_LENGTH
+        ld      (FILE_NAME_LENGTH), a       ; Update file name length
+
+        ld      a, low(FILE_NAME_BUFFER)    ; Determine append position
+        add     a, e
+        ld      e, a
+        ld      a, 0
+        adc     a, high(FILE_NAME_BUFFER)
+        ld      d, a
+
+        ld      hl, CAS_EXTENSION
+        ld      bc, CAS_EXTENSION_LENGTH
+        ldir                                ; Append extension
+
+FIND_FILE_NAME:
         ; Find filename in the ROM file system
         call    GET_FILE_SYSTEM_INFO         ; Get file system address and number of files
         ld      c, a                         ; Number of files in the file system
 
 COMPARE_FILE_NAMES:
-        push    de                           ; save file name address
         push    hl                           ; save file system entry address
 
-        ; get file name length to B
-        ex      hl, de                       
-        ld      b, (hl)
-        inc     hl
-        ex      hl, de
+        ; get file name length to B and file name buffer to DE
+        ld      a, (FILE_NAME_LENGTH)
+        ld      b, a
+        ld      de, FILE_NAME_BUFFER
 
 COMPARE_FILENAME_CHARACTERS:
         ld      a, (de)                      ; Compare file name characters
@@ -233,7 +282,17 @@ COMPARE_FILENAME_CHARACTERS:
 
         djnz    COMPARE_FILENAME_CHARACTERS
 
-        ; file found -> get address and length
+        ; file found
+        ld      a, 1                         ; set file opened flag
+        ld      (FILE_OPENED_FLAG), a
+
+        ; Copy RAM code
+        ld	hl, RAM_FUNCTIONS_STORAGE
+	ld	de, RAM_FUNCTIONS
+	ld	bc, RAM_FUNCTIONS_CODE_LENGTH
+        ldir
+        
+        ; get address and length
         pop     bc                           ; Restore file system entry address
         ld      hl,  FileSystemEntry.FILE_ADDRESS
         add     hl, bc
@@ -260,16 +319,15 @@ COMPARE_FILENAME_CHARACTERS:
         ld      (BUFFER), a                 ; Set non-buffered file
 
         pop     de                          ; restore file name pointer
-        xor     a                           ; no error
+        ld      de, FILE_NAME_LENGTH        ; return back the modified file name (FILE_NAME_BUFFER) and length (FILE_NAME_LENGTH)
 
+        xor     a                           ; no error
         jp      CAS_RETURN
         
 CHECK_NEXT_FILE:
         pop     hl                          ; file system entry address
         ld      de, FileSystemEntry         ; next entry
         add     hl, de
-        
-        pop     de                          ; file name pointer
 
         dec     c
         ld      a,  c
@@ -277,8 +335,10 @@ CHECK_NEXT_FILE:
         jr      nz, COMPARE_FILE_NAMES
 
         ; file not found
-        ld      a, CAS_ERR_NO_OPEN_FILE
+        pop     de                          ; restore file name pointer
 
+RET_NO_OPEN_FILE_ERROR:
+        ld      a, CAS_ERR_NO_OPEN_FILE
         jp      CAS_RETURN
 
         ;---------------------------------------------------------------------
@@ -287,6 +347,12 @@ CHECK_NEXT_FILE:
         ; Output: C - character
         ;         A - status code
 CAS_CH_IN:
+        ; check if file is opened
+        ld      a, (FILE_OPENED_FLAG)
+        or      a
+        jr      z, RET_NO_OPEN_FILE_ERROR
+
+        ; load file position
         ld      a,(CURRENT_CAS_HEADER_POS)
         cp      CASHeader
         jr      nc, CAS_CH_IN_EOF
@@ -317,11 +383,26 @@ CAS_CH_IN_EOF:
         ;        BC - Length of the buffer
         ; Output: A - status code
 CAS_BKIN:
+        ; check if file is opened
+        ld      a, (FILE_OPENED_FLAG)
+        or      a
+        jr      z, RET_NO_OPEN_FILE_ERROR
+
+        ; Check remaining file length
         ld      hl, (CURRENT_FILE_LENGTH)
+        ld      a, l
+        or      h
+        jr      z, CAS_BKIN_EOF
+
         or      a
         sbc     hl, bc
-        jr      c, CAS_BKIN_WRONG_SIZE
+        jr      nc, CAS_BKIN_LOAD
 
+        ; requested length is longer than file length, adjust it
+        ld      bc, (CURRENT_FILE_LENGTH)   ; Bytes to copy
+        ld      hl, 0                       ; No more remaining bytes
+
+CAS_BKIN_LOAD:
         ld      (CURRENT_FILE_LENGTH), hl   ; Update remaining length
 
         ld      hl, (CURRENT_FILE_ADDRESS)  ; load file address
@@ -331,8 +412,8 @@ CAS_BKIN:
         xor     a                           ; Success
         jp      CAS_RETURN
 
-CAS_BKIN_WRONG_SIZE:
-        ld      a, CAS_ERR_INTERNAL         ; wrong byte number
+CAS_BKIN_EOF:
+        ld      a, CAS_ERR_EOF              ; End of file
         jp      CAS_RETURN
 
         ;---------------------------------------------------------------------
@@ -350,7 +431,10 @@ CAS_CLOSE_RD:
         ld      (CURRENT_FILE_LENGTH), a
         ld      (CAS_HEADER.FileLength), a
         ld      (CURRENT_FILE_LENGTH+1), a
-        ld      (CAS_HEADER.FileLength+1), a        
+        ld      (CAS_HEADER.FileLength+1), a 
+
+        ; reset file opened
+        ld      (FILE_OPENED_FLAG), a      
 
         jp      CAS_RETURN
 
@@ -360,6 +444,11 @@ CAS_RETURN:
         pop hl                                          ; Restore HL
         or a                                            ; Set flags according to error code
         jp SYSTEM_FUNCTION_RETURN
+
+
+CAS_EXTENSION:
+        db      ".CAS"
+CAS_EXTENSION_LENGTH equ $-CAS_EXTENSION
 
 
         ; *** Other modules ***

@@ -1,23 +1,16 @@
-        ; ****************
-        ; * U0 data area *
-        ; ****************
-RAM_DATA_STORAGE:	
-        phase RAM_DATA
-BASIC_VERSION           db      2           ; ROM version information
+        ; ********************************
+        ; * U0 area for data and program *
+        ; ********************************
+RAM_FUNCTIONS_STORAGE:	
+        phase RAM_FUNCTIONS
 ROM_RETURN_ADDRESS      dw      0           ; Return address for 2.x ROM 
-FILE_IS_OPENED          db      0           ; 1 - file is opened in the ROM filesystem, 0 - no file opened
 CURRENT_PAGE_INDEX      db      0           ; Used page index 0..3
 CURRENT_FILE_LENGTH     dw      0           ; Remaining length of the currently opened file
 CURRENT_FILE_ADDRESS    dw      0           ; Address of the currently opened file
 CURRENT_CAS_HEADER_POS  db      0           ; Position in CAS header (for CH_IN function)
-CURRENT_FILE_NAME_LEN   db      0           ; Name length of the currently opened file
-CURRENT_FILE_NAME       ds      CART_MAX_FILENAME_LENGTH, ' ' ; Name of the currently opened file
 
         ; CAS header struct
 CAS_HEADER  CASHeader
-
-RAM_DATA_LENGTH equ $-RAM_DATA
-	dephase      
 
         ; ***********************
         ; * Initialization code *
@@ -25,9 +18,7 @@ RAM_DATA_LENGTH equ $-RAM_DATA
 
         ;---------------------------------------------------------------------
         ; BASIC initialization and version detection program
-BASIC_INITIALIZE_CODE:	
-        phase RAM_PROGRAM
-        
+
 BASIC_INITIALIZE:        
         ; Set memory map to: U0, U1, U2, SYS
 	ld	a, P_U0_U1_U2_SYS
@@ -35,27 +26,24 @@ BASIC_INITIALIZE:
         out     (PAGE_REG), a
 		
 	; determine ROM version (1.x or 2.x)
-	ld 	a, ($f09f)                  ; Check for 1.2 verion number
-	cp	$0c
-	jr 	nz, BASIC_INITIALIZE_END
+	ld 	a, (VERSION)                  ; Check for 1.x verion number
+	or      a                             ; version is 0 for 1.x ROM
+	jr 	nz, BASIC_INITIALIZE_END      ; Version is 2.x -> no more action
 		
-	; version is 1.x -> store version
-	ld	a, 1
-	ld	(BASIC_VERSION), a
-		
+	; version is 1.x
 	; initialize BASIC storage area
 	ld	hl, BASIC_STORAGE_AREA
 	push 	hl
 	pop	ix
-	ld	bc, 02efh
-	ld	de, 1701h
+	ld	bc, $02ef
+	ld	de, $1701
 	ld	(hl), 0
 	ldir
 		
 	; initialize error handlers
-	ld	hl, 0fb5bh
+	ld	hl, $0fb5b
 	ld 	de, 8
-	ld	bc, 27h
+	ld	bc, $27
 	ldir
 		
 	; call NEW command
@@ -70,15 +58,9 @@ BASIC_INITIALIZE_END:
 	; return back to the CART
 	ret
 
-BASIC_INITIALIZE_CODE_LENGTH: equ $-RAM_PROGRAM
-        dephase
-
-        ; *****************
-        ; * RAM Functions *
-        ; *****************
-
-RAM_FUNCTIONS_CODE:
-        phase RAM_PROGRAM
+        ; **********************
+        ; * RAM File Functions *
+        ; **********************
 
         ;---------------------------------------------------------------------
         ; Copies TVC program file from Cart ROM to RAM
@@ -92,7 +74,7 @@ COPY_PROGRAM_TO_RAM:
         ; Check length
         ld      a, b
         or      a, c
-        ret     z                               ; Return is length is zero
+        ret     z                               ; Return if length is zero
 
 	; Set memory map to: U0, U1, U2, CART
 	ld	a, P_U0_U1_U2_CART
@@ -175,7 +157,7 @@ PROGRAM_COPY_LOOP:
 ; -----------------------------------------------------------------------------
 COMPRESSED_COPY:
 dzx7_standard:
-        ld      a, 80h
+        ld      a, $80
 dzx7s_copy_byte_loop:
         ldi                             ; copy literal byte
         call    UPDATE_SOURCE_ADDRESS
@@ -285,7 +267,7 @@ CHANGE_ROM_PAGE:
 
         ;---------------------------------------------------------------------
         ; Starts Basic program for 1.x ROM
-BASIC_RUN:
+BASIC_RUN_1x:
         ; Set memory map to: U0, U1, U2, SYS
 	ld	a, P_U0_U1_U2_SYS
         ld      (P_SAVE), a
@@ -295,56 +277,64 @@ BASIC_RUN:
 	ei
 		
 	; execute RUN command
-	ld	hl, (1722h)
-	jp	0de23h
+	ld	hl, ($1722)
+	jp	$de23
 
-        ;---------------------------------------------------------------------
-        ; Passing System Function call to ROM
-SYSTEM_FUNCTON_PASS:
-        ld      a,P_U0_U1_U2_SYS            ; Page in ROM
-        ld      (P_SAVE),a
-        out     (PAGE_REG),a
-
-SYSTEM_FUNCTION_CHAIN_ADDRESS:
-        jp      0                           ; Jump to ROM (address will be updates when code is copied to RAM)
-
-	
-RAM_FUNCTIONS_CODE_LENGTH: equ $-RAM_PROGRAM
+RAM_FUNCTIONS_CODE_LENGTH: equ $-RAM_FUNCTIONS
 	dephase
 
         ; ************************
         ; * System function call *
         ; ************************
 
-SYSTEM_FUNCTION_CALLER_CODE:
+SYSTEM_FUNCTION_CALLER_STORAGE:
         phase SYSTEM_FUNCTION_CALLER
 
         ; *** System function caller
-        ex (sp),hl                          ; Get return address
-        ld a,(hl)                           ; Get function code
-        inc hl                              ; Increment return address
-        ex (sp),hl                          ; Store return address
-        ex af,af'                           ; Save fuction code to AF'
-        push af                             ; and store original AF' to stack
+        ex      (sp),hl                     ; Get return address
+        ld      a,(hl)                      ; Get function code
+        inc     hl                          ; Increment return address
+        ex      (sp),hl                     ; Store return address
+        ex      af,af'                      ; Save fuction code to AF'
+        push    af                          ; and store original AF' to stack
 
-        ld a,(P_SAVE)                       ; Save memory pageing settings
-        push af                             ; to stack
+        ld      a,(P_SAVE)                  ; Save memory pageing settings
+        push    af                          ; to stack
 
-        ld A,P_U0_U1_U2_CART                ; Set paging to U0-U1-U2-CART
-        ld (P_SAVE),a
-        out (PAGE_REG),a
+        ld      A,P_U0_U1_U2_CART           ; Set paging to U0-U1-U2-CART
+        ld      (P_SAVE),a
+        out     (PAGE_REG),a
 
-        jp SYSTEM_FUNCTION                  ; Call New System Function
+        jp      SYSTEM_FUNCTION             ; Call New System Function
 
 SYSTEM_FUNCTION_RETURN:
-        ex af,af'
-        pop af
+        ex      af,af'
+        pop     af
 
-        ld (P_SAVE),a                       ; Restore paging
-        out (PAGE_REG),a
-        pop af
-        ex af,af'
+        ld      (P_SAVE),a                  ; Restore paging
+        out     (PAGE_REG),a
+        pop     af
+        ex      af,af'
         ret
 
 SYSTEM_FUNCTION_CALLER_CODE_LENGTH equ $-SYSTEM_FUNCTION_CALLER
+        dephase
+
+        ; ************************
+        ; * System function pass *
+        ; ************************
+
+SYSTEM_FUNCTION_PASS_STORAGE:
+        phase SYSTEM_FUNCTION_PASS
+
+        ;---------------------------------------------------------------------
+        ; Passing System Function call to ROM
+        ld      a,P_U0_U1_U2_SYS            ; Page in ROM
+        ld      (P_SAVE),a
+        out     (PAGE_REG),a
+
+SYSTEM_FUNCTION_CHAIN_ADDRESS:
+        jp      0                           ; Jump to ROM (address will be updated when code is copied to RAM)
+
+SYSTEM_FUNCTION_PASS_CODE_LENGTH equ $-SYSTEM_FUNCTION_PASS
         dephase

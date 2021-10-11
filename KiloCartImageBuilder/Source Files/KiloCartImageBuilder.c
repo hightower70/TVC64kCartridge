@@ -78,6 +78,8 @@ bool CreateROMFileSystem();
 // Global variables
 
 uint8_t g_page_start_bytes[] = { 'M', 'O', 'P', 'S', 0x3A, 0xFC, 0xFF };
+uint8_t g_page_end_bytes[] = { 0x00, 0x01, 0x02, 0x03 };
+
 
 byte g_file_buffer[FILE_BUFFER_SIZE];
 int g_file_buffer_length;
@@ -336,7 +338,7 @@ bool CreateROMImage(void)
 	if (g_compressed_mode)
 		PRINT_INFO(L"\nCompressed mode statistic:");
 	else
-		PRINT_INFO(L"\nStorege statistics:");
+		PRINT_INFO(L"\nStorage statistics:");
 
 	PRINT_INFO(L" %d bytes used, %d bytes free (%d total bytes)", g_rom_image_address, CART_ROM_SIZE - g_rom_image_address, CART_ROM_SIZE);
 
@@ -345,6 +347,17 @@ bool CreateROMImage(void)
 	{
 		while (g_rom_image_address < CART_ROM_SIZE)
 		{
+			if ((g_rom_image_address % CART_PAGE_SIZE) >= ROM_PAGE_CHANGE_ADDRESS)
+			{
+				// cover page change addresses with some less useful data
+				memcpy(g_rom_image + g_rom_image_address, g_page_end_bytes, sizeof(g_page_end_bytes));
+				g_rom_image_address += sizeof(g_page_end_bytes);
+
+				// copy page start bytes
+				memcpy(g_rom_image + g_rom_image_address, g_page_start_bytes, sizeof(g_page_start_bytes));
+				g_rom_image_address += sizeof(g_page_start_bytes);
+			}
+
 			g_rom_image[g_rom_image_address++] = 0xff;
 		}
 	}
@@ -502,10 +515,8 @@ bool CreateROMFileSystem()
 				if ((g_rom_image_address % CART_PAGE_SIZE) >= ROM_PAGE_CHANGE_ADDRESS)
 				{
 					// cover page change addresses with some less useful data
-					g_rom_image[g_rom_image_address++] = 0;
-					g_rom_image[g_rom_image_address++] = 1;
-					g_rom_image[g_rom_image_address++] = 2;
-					g_rom_image[g_rom_image_address++] = 3;
+					memcpy(g_rom_image + g_rom_image_address, g_page_end_bytes, sizeof(g_page_end_bytes));
+					g_rom_image_address += sizeof(g_page_end_bytes);
 
 					// copy page start bytes
 					memcpy(g_rom_image + g_rom_image_address, g_page_start_bytes, sizeof(g_page_start_bytes));
