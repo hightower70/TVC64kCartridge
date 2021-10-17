@@ -1,772 +1,997 @@
 # file opened: kilocart.a80
-  1   0000                      .include "definitions.a80"
+  1   0000
+  2   0000                      .include "definitions.a80"
 # file opened: definitions.a80
   1+  0000
-  2+  0000              ; Cartridge start memory address
-  3+  0000              CART_START_ADDRESS      equ $C000
-  4+  0000              PAGE_DATA_START_ADDRESS equ $c007
-  5+  0000
-  6+  0000              ; System memory definitions
-  7+  0000              P_SAVE                  equ $0003
-  8+  0000              FILE_TYPE               equ $0bf3
-  9+  0000              BASIC_STORAGE_AREA      equ $1700
- 10+  0000              BASIC_PROGRAM_START     equ $19EF
- 11+  0000              BASIC_FLAG	        equ $0EB6
- 12+  0000              BUFFER                  equ $0b6b
- 13+  0000
- 14+  0000              ; RAM (U0) addresses
- 15+  0000              RAM_DATA          equ $0c05
- 16+  0000              RAM_PROGRAM       equ $0c05 + RAM_DATA_LENGTH
- 17+  0000
- 18+  0000              ; System call code addresses
- 19+  0000              SYSTEM_FUNCTION_CALLER                  EQU $0B23
- 20+  0000              SYSTEM_FUNCTION_ROM_ENTRY_ADDRESS       EQU $0B35
- 21+  0000
- 22+  0000              ; Paging addresses
- 23+  0000              PAGE0_SELECT   equ $fffc
- 24+  0000              PAGE1_SELECT   equ $fffd
- 25+  0000              PAGE2_SELECT   equ $fffe
- 26+  0000              PAGE3_SELECT   equ $ffff
+  2+  0000              ;DECOMPRESSOR_ENABLED EQU 0
+  3+  0000
+  4+  0000              ; Cartridge start memory address
+  5+  0000              CART_START_ADDRESS      equ $C000
+  6+  0000              PAGE_DATA_START_ADDRESS equ $c007
+  7+  0000
+  8+  0000              ; System memory definitions
+  9+  0000              P_SAVE                  equ $0003
+ 10+  0000              FILE_TYPE               equ $0bf3
+ 11+  0000              BASIC_STORAGE_AREA      equ $1700
+ 12+  0000              BASIC_PROGRAM_START     equ $19EF
+ 13+  0000              SYSTEM_FUNCTION_PASS    equ $0b95
+ 14+  0000              BASIC_FLAG	        equ $0EB6
+ 15+  0000              VERSION                 equ $0EB7
+ 16+  0000              FILE_OPENED_FLAG        equ $0EB8
+ 17+  0000              BUFFER                  equ $0b6b
+ 18+  0000              FILE_NAME_LENGTH        equ $0bf4
+ 19+  0000              FILE_NAME_BUFFER        equ $0bf5
+ 20+  0000
+ 21+  0000              ; RAM (U0) addresses
+ 22+  0000              RAM_FUNCTIONS           equ $0c05     ; Buffered input file, buffer area is used for ROM file operation
+ 23+  0000
+ 24+  0000              ; System call code addresses
+ 25+  0000              SYSTEM_FUNCTION_CALLER                  EQU $0B23
+ 26+  0000              SYSTEM_FUNCTION_ROM_ENTRY_ADDRESS       EQU $0B35
  27+  0000
- 28+  0000              ; KiloCart constants
- 29+  0000              CART_MAX_FILENAME_LENGTH equ     16
- 30+  0000
- 31+  0000              ; System types
- 32+  0000              BUFFERED_FILE   equ $11
+ 28+  0000              ; Paging addresses
+ 29+  0000              PAGE0_SELECT   equ $fffc
+ 30+  0000              PAGE1_SELECT   equ $fffd
+ 31+  0000              PAGE2_SELECT   equ $fffe
+ 32+  0000              PAGE3_SELECT   equ $ffff
  33+  0000
- 34+  0000              ; System function codes and masks
- 35+  0000              SYSTEM_FUNCTION_CLASS_MASK              equ $70
- 36+  0000              SYSTEM_FUNCTION_DIRECTION_MASK          equ $80
- 37+  0000              CAS_FUNCTION_CLASS                      equ $50
- 38+  0000              CAS_LAST_FUNCTION_CODE                  equ $0b
+ 34+  0000              ; KiloCart constants
+ 35+  0000              CART_MAX_FILENAME_LENGTH equ     16
+ 36+  0000
+ 37+  0000              ; System types
+ 38+  0000              BUFFERED_FILE   equ $11
  39+  0000
- 40+  0000              ; Register definitions
- 41+  0000              PAGE_REG        EQU $02
- 42+  0000
- 43+  0000              ; Memory pageing constants
- 44+  0000              P_U0_U1_U2_SYS   EQU $70
- 45+  0000              P_U0_U1_U2_CART  EQU $30
- 46+  0000              P_SYS_U1_U2_CART EQU $20
- 47+  0000
- 48+  0000              ; Version numbers
- 49+  0000              SW_MAJOR_VERSION EQU 0
- 50+  0000              SW_MINOR_VERSION EQU 1
- 51+  0000
- 52+  0000              ; Casette functions
- 53+  0000              CAS_FN_CHIN     EQU $D1
- 54+  0000              CAS_FN_CHOUT    EQU $51
- 55+  0000              CAS_FN_BKIN     EQU $D2
- 56+  0000              CAS_FN_BKOUT    EQU $52
- 57+  0000              CAS_FN_OPEN     EQU $D3
- 58+  0000              CAS_FN_CRTE     EQU $53
- 59+  0000              CAS_FN_CLOSE_RD EQU $D4
- 60+  0000              CAS_FN_CLOSE_WR EQU $54
- 61+  0000              CAS_FN_VERIFY   EQU $D5
- 62+  0000
- 63+  0000              ; Casette function error codes
- 64+  0000              CAS_ERR_EOF             EQU $EC
- 65+  0000              CAS_ERR_ALREADY_OPENED  EQU $EB
- 66+  0000              CAS_ERR_CRC             EQU $EA
- 67+  0000              CAS_ERR_NO_OPEN_FILE    EQU $E9
- 68+  0000              CAS_ERR_VERIFY          EQU $E8
- 69+  0000              CAS_ERR_INTERNAL        EQU $E7
- 70+  0000              CAS_ERR_PROTECTION      EQU $E6
- 71+  0000              CAS_ERR_BLOCK_NUMBER    EQU $E5
- 72+  0000
- 73+  0000
- 74+  0000              ; File system struct
- 75+  0000                      struct FileSystemStruct
- 76+  0000 ~            FILES1x_COUNT       db 0                    ; Number of files in the image for 1.x TVC ROM version
- 77+  0000 ~            FILES2x_COUNT       db 0                    ; Number of files in the image for 2.x TVC ROM version
- 78+  0000 ~            DIRECTORY1x_ADDRESS dw 0                    ; Address of the directory for 1.x TVC ROM version
- 79+  0000 ~            DIRECTORY2x_ADDRESS dw 0	            ; Address of the directory for 1.x TVC ROM version
- 80+  0000 ~            FILES_ADDRESS       dw 0	            ; Address of the file data
- 81+  0000                      ends
- 82+  0000
- 83+  0000              ; File system entry
- 84+  0000                      struct FileSystemEntry
- 85+  0000 ~            FILE_NAME       ds CART_MAX_FILENAME_LENGTH, 0
- 86+  0000 ~            FILE_ADDRESS    dw 0
- 87+  0000 ~            FILE_LENGTH     DW 0
- 88+  0000                      ends
- 89+  0000
- 90+  0000              ; CAS header struct
- 91+  0000                      struct CASHeader
- 92+  0000 ~            Zero            db 0    ; 0
- 93+  0000 ~            FileType        db 1    ; Program type: 0x01 - Program file, 0x00 - ASCII file
- 94+  0000 ~            FileLength      dw 0    ; Length of the file
- 95+  0000 ~            Autorun         db $ff  ; Autostart: 0xff, no autostart: 0x00
- 96+  0000 ~            Zeros           ds 10, 0; Zero
- 97+  0000 ~            Version         db      ; Version
- 98+  0000                      ends
+ 40+  0000              ; System function codes and masks
+ 41+  0000              SYSTEM_FUNCTION_CLASS_MASK              equ $70
+ 42+  0000              SYSTEM_FUNCTION_DIRECTION_MASK          equ $80
+ 43+  0000              CAS_FUNCTION_CLASS                      equ $50
+ 44+  0000              CAS_LAST_FUNCTION_CODE                  equ $0b
+ 45+  0000
+ 46+  0000              ; Register definitions
+ 47+  0000              PAGE_REG        EQU $02
+ 48+  0000
+ 49+  0000              ; Memory pageing constants
+ 50+  0000              P_U0_U1_U2_SYS   EQU $70
+ 51+  0000              P_U0_U1_U2_CART  EQU $30
+ 52+  0000              P_SYS_U1_U2_CART EQU $20
+ 53+  0000
+ 54+  0000              ; Version numbers
+ 55+  0000              SW_MAJOR_VERSION EQU 0
+ 56+  0000              SW_MINOR_VERSION EQU 1
+ 57+  0000
+ 58+  0000              ; Casette functions
+ 59+  0000              CAS_FN_CHIN     EQU $D1
+ 60+  0000              CAS_FN_CHOUT    EQU $51
+ 61+  0000              CAS_FN_BKIN     EQU $D2
+ 62+  0000              CAS_FN_BKOUT    EQU $52
+ 63+  0000              CAS_FN_OPEN     EQU $D3
+ 64+  0000              CAS_FN_CRTE     EQU $53
+ 65+  0000              CAS_FN_CLOSE_RD EQU $D4
+ 66+  0000              CAS_FN_CLOSE_WR EQU $54
+ 67+  0000              CAS_FN_VERIFY   EQU $D5
+ 68+  0000
+ 69+  0000              ; Casette function error codes
+ 70+  0000              CAS_ERR_EOF             EQU $EC
+ 71+  0000              CAS_ERR_ALREADY_OPENED  EQU $EB
+ 72+  0000              CAS_ERR_CRC             EQU $EA
+ 73+  0000              CAS_ERR_NO_OPEN_FILE    EQU $E9
+ 74+  0000              CAS_ERR_VERIFY          EQU $E8
+ 75+  0000              CAS_ERR_INTERNAL        EQU $E7
+ 76+  0000              CAS_ERR_PROTECTION      EQU $E6
+ 77+  0000              CAS_ERR_BLOCK_NUMBER    EQU $E5
+ 78+  0000
+ 79+  0000
+ 80+  0000              ; File system struct
+ 81+  0000                      struct FileSystemStruct
+ 82+  0000 ~            FILES1x_COUNT       db 0                    ; Number of files in the image for 1.x TVC ROM version
+ 83+  0000 ~            FILES2x_COUNT       db 0                    ; Number of files in the image for 2.x TVC ROM version
+ 84+  0000 ~            DIRECTORY1x_ADDRESS dw 0                    ; Address of the directory for 1.x TVC ROM version
+ 85+  0000 ~            DIRECTORY2x_ADDRESS dw 0	            ; Address of the directory for 1.x TVC ROM version
+ 86+  0000 ~            FILES_ADDRESS       dw 0	            ; Address of the file data
+ 87+  0000                      ends
+ 88+  0000
+ 89+  0000              ; File system entry
+ 90+  0000                      struct FileSystemEntry
+ 91+  0000 ~            FILE_NAME       ds CART_MAX_FILENAME_LENGTH, 0
+ 92+  0000 ~            FILE_ADDRESS    dw 0
+ 93+  0000 ~            FILE_LENGTH     DW 0
+ 94+  0000                      ends
+ 95+  0000
+ 96+  0000              ; CAS header struct
+ 97+  0000                      struct CASHeader
+ 98+  0000 ~            Zero            db 0    ; 0
+ 99+  0000 ~            FileType        db 1    ; Program type: 0x01 - Program file, 0x00 - ASCII file
+100+  0000 ~            FileLength      dw 0    ; Length of the file
+101+  0000 ~            Autorun         db $ff  ; Autostart: 0xff, no autostart: 0x00
+102+  0000 ~            Zeros           ds 10, 0; Zero
+103+  0000 ~            Version         db      ; Version
+104+  0000                      ends
 # file closed: definitions.a80
-  2   0000
-  3   0000                      org     CART_START_ADDRESS
-  4   C000 4D 4F 50 53          db      "MOPS"
-  5   C004
-  6   C004                      ;---------------------------------------------------------------------
-  7   C004                      ; Main program entry point. Intializes cart program
-  8   C004              ENTRY:
-  9   C004 3A FC FF             ld      a, (PAGE0_SELECT)               ; Change to Page0
- 10   C007 C3 0C C0             jp      MAIN                            ; Jump to initialization
- 11   C00A 00                   db      SW_MAJOR_VERSION                ; Major version number
- 12   C00B 01                   db      SW_MINOR_VERSION                ; Minor version number
- 13   C00C
- 14   C00C                      ; Initialize cart program
- 15   C00C              MAIN:
- 16   C00C                      ; Set memory map to: U0, U1, U2, CART
- 17   C00C 3E 30                ld      a, P_U0_U1_U2_CART
- 18   C00E 32 03 00             ld      (P_SAVE), a
- 19   C011 D3 02                out     (PAGE_REG), a
- 20   C013
- 21   C013 D5                   push    de                              ; save returning address for 2.x ROM
- 22   C014
- 23   C014                      ; Copy RAM data
- 24   C014 21 90 C1             ld      hl, RAM_DATA_STORAGE
- 25   C017 11 05 0C             ld      de, RAM_DATA
- 26   C01A 01 2B 00             ld      bc, RAM_DATA_LENGTH
- 27   C01D ED B0                ldir
- 28   C01F
- 29   C01F                      ; calculate returning address for 2.x ROM
- 30   C01F E1                   pop     hl                              ; restore returning address
- 31   C020 11 EA FF     	ld	de, -22
- 32   C023 19           	add     hl, de
- 33   C024 22 06 0C     	ld      (ROM_RETURN_ADDRESS), hl
- 34   C027
- 35   C027                      ; Copy BASINIT program to the RAM
- 36   C027 21 BB C1             ld	hl, BASIC_INITIALIZE_CODE
- 37   C02A 11 30 0C     	ld	de, RAM_PROGRAM
- 38   C02D 01 39 00     	ld	bc, BASIC_INITIALIZE_CODE_LENGTH
- 39   C030 ED B0        	ldir
- 40   C032
- 41   C032              	; call BASIC area initialize and version detection
- 42   C032 CD 30 0C     	call	BASIC_INITIALIZE
- 43   C035
- 44   C035                      ; Copy RAM code
- 45   C035 21 F4 C1             ld      hl, RAM_FUNCTIONS_CODE
- 46   C038 11 30 0C             ld      de, RAM_PROGRAM
- 47   C03B 01 67 00             ld      bc, RAM_FUNCTIONS_CODE_LENGTH
- 48   C03E ED B0                ldir
- 49   C040
- 50   C040                      ; *** Chain system function call
- 51   C040
- 52   C040                      ; Copy ROM entry address of the system function call
- 53   C040 2A 35 0B             ld      HL, (SYSTEM_FUNCTION_ROM_ENTRY_ADDRESS)
- 54   C043 22 95 0C             ld      (SYSTEM_FUNCTION_CHAIN_ADDRESS+1), HL
- 55   C046
- 56   C046                      ; Overwrite original system call code
- 57   C046 21 5B C2             ld      HL, SYSTEM_FUNCTION_CALLER_CODE
- 58   C049 11 23 0B             ld      DE, SYSTEM_FUNCTION_CALLER
- 59   C04C 01 1E 00             ld      BC, SYSTEM_FUNCTION_CALLER_CODE_LENGTH
- 60   C04F ED B0                ldir
- 61   C051
- 62   C051                      ; *** Load and Start the first program from the ROM filesystem ***
- 63   C051 CD 88 C0             call    GET_FILE_SYSTEM_INFO
- 64   C054
- 65   C054 11 10 00             ld      de, CART_MAX_FILENAME_LENGTH    ; Skip filename
- 66   C057 19                   add     hl, de
- 67   C058 5E                   ld      e,  (hl)                        ; Load address
- 68   C059 23                   inc     hl
- 69   C05A 56                   ld      d,  (hl)
+  3   0000
+  4   0000                      org     CART_START_ADDRESS
+  5   C000 4D 4F 50 53          db      "MOPS"
+  6   C004
+  7   C004                      ;---------------------------------------------------------------------
+  8   C004                      ; Main program entry point. Intializes cart program
+  9   C004              ENTRY:
+ 10   C004 3A FC FF             ld      a, (PAGE0_SELECT)               ; Change to Page0
+ 11   C007 C3 14 C0             jp      MAIN                            ; Jump to initialization
+ 12   C00A
+ 13   C00A 4B 49 4C 4F          db      "KILOCART"
+ 13   C00E 43 41 52 54
+ 14   C012
+ 15   C012 00                   db      SW_MAJOR_VERSION                ; Major version number
+ 16   C013 01                   db      SW_MINOR_VERSION                ; Minor version number
+ 17   C014
+ 18   C014                      ; Initialize cart program
+ 19   C014              MAIN:
+ 20   C014                      ; Set memory map to: U0, U1, U2, CART
+ 21   C014 3E 30                ld      a, P_U0_U1_U2_CART
+ 22   C016 32 03 00             ld      (P_SAVE), a
+ 23   C019 D3 02                out     (PAGE_REG), a
+ 24   C01B
+ 25   C01B D5                   push    de                              ; save returning address for 2.x ROM
+ 26   C01C
+ 27   C01C                      ; Copy BASINIT program to the RAM
+ 28   C01C 21 0A C2             ld	hl, RAM_FUNCTIONS_STORAGE
+ 29   C01F 11 05 0C     	ld	de, RAM_FUNCTIONS
+ 30   C022 01 F8 00     	ld	bc, RAM_FUNCTIONS_CODE_LENGTH
+ 31   C025 ED B0        	ldir
+ 32   C027
+ 33   C027              	; call BASIC area initialize and version detection
+ 34   C027 CD 1D 0C     	call	BASIC_INITIALIZE
+ 35   C02A
+ 36   C02A                      ; calculate returning address for 2.x ROM
+ 37   C02A D1                   pop     de                              ; restore returning address for 2.x ROM
+ 38   C02B 21 EA FF     	ld	hl, -22
+ 39   C02E 19           	add     hl, de
+ 40   C02F 22 05 0C     	ld      (ROM_RETURN_ADDRESS), hl
+ 41   C032
+ 42   C032                      ; *** Chain system function call
+ 43   C032
+ 44   C032                      ; Copy system function pass (return to original ROM function) code to RAM
+ 45   C032 21 20 C3             ld      HL, SYSTEM_FUNCTION_PASS_STORAGE
+ 46   C035 11 95 0B             ld      DE, SYSTEM_FUNCTION_PASS
+ 47   C038 01 0A 00             ld      BC, SYSTEM_FUNCTION_PASS_CODE_LENGTH
+ 48   C03B ED B0                ldir
+ 49   C03D
+ 50   C03D                      ; Copy ROM entry address of the system function call
+ 51   C03D 2A 35 0B             ld      HL, (SYSTEM_FUNCTION_ROM_ENTRY_ADDRESS)
+ 52   C040 22 9D 0B             ld      (SYSTEM_FUNCTION_CHAIN_ADDRESS+1), HL
+ 53   C043
+ 54   C043                      ; Overwrite system function caller RAM code
+ 55   C043 21 02 C3             ld      hl, SYSTEM_FUNCTION_CALLER_STORAGE
+ 56   C046 11 23 0B             ld      de, SYSTEM_FUNCTION_CALLER
+ 57   C049 01 1E 00             ld      bc, SYSTEM_FUNCTION_CALLER_CODE_LENGTH
+ 58   C04C ED B0                ldir
+ 59   C04E
+ 60   C04E                      ; No ROM file is opened
+ 61   C04E 3E 00                ld      a, 0
+ 62   C050 32 B8 0E             ld      (FILE_OPENED_FLAG), a
+ 63   C053
+ 64   C053                      ; *** Load and Start the first program from the ROM filesystem ***
+ 65   C053 CD 89 C0             call    GET_FILE_SYSTEM_INFO
+ 66   C056
+ 67   C056 11 10 00             ld      de, CART_MAX_FILENAME_LENGTH    ; Skip filename
+ 68   C059 19                   add     hl, de
+ 69   C05A 5E                   ld      e,  (hl)                        ; Load address
  70   C05B 23                   inc     hl
- 71   C05C 4E                   ld      c,  (hl)                        ; Load length
+ 71   C05C 56                   ld      d,  (hl)
  72   C05D 23                   inc     hl
- 73   C05E 46                   ld      b,  (hl)
- 74   C05F
- 75   C05F 6B                   ld      l, e
- 76   C060 62                   ld      h, d
- 77   C061 11 EF 19     	ld	de, BASIC_PROGRAM_START
- 78   C064
- 79   C064 CD 30 0C     	call    COPY_PROGRAM_TO_RAM
- 80   C067
- 81   C067              	; setup BASIC program location
- 82   C067 21 EF 19             ld	hl, BASIC_PROGRAM_START
- 83   C06A 22 20 17     	ld	(1720h), hl
- 84   C06D 22 22 17     	ld	(1722h), hl
- 85   C070
- 86   C070              	; Start program
- 87   C070 3A 05 0C     	ld	a,(BASIC_VERSION)
- 88   C073 FE 01        	cp	1
- 89   C075 CA 7F 0C     	jp	z, BASIC_RUN
- 90   C078
- 91   C078                      ; Start program routine for 2.x version rom
- 92   C078                      ; set BASIC flag to no start screen, no prompt, no new command and autostart
- 93   C078 3E 0F                ld	a, 0fh
- 94   C07A 32 B6 0E             ld	(BASIC_FLAG), a
- 95   C07D
- 96   C07D              	; load return address
- 97   C07D 2A 06 0C     	ld	hl,(ROM_RETURN_ADDRESS)
- 98   C080
- 99   C080              	; Set memory map to: SYS, U1, U2, CART
-100   C080 3E 20        	ld	a, P_SYS_U1_U2_CART
-101   C082 32 03 00             ld      (P_SAVE), A
-102   C085 D3 02                out     (PAGE_REG), A
-103   C087
-104   C087              	; return back to ROM
-105   C087 E9           	jp	(hl)
-106   C088
-107   C088                      ;------------------------------------
-108   C088                      ; Load file system area area address
-109   C088                      ; Input: -
-110   C088                      ; Output: HL - File system area address depending on the basic version
-111   C088                      ;          A - Number of files in the file system
-112   C088                      ; Destroys: A, F
-113   C088              GET_FILE_SYSTEM_INFO:
-114   C088 3A 05 0C             ld      a, (BASIC_VERSION)
-115   C08B FE 01                cp      a, 1
-116   C08D 28 0B                jr      z, SET_VERSION1x_FILE_SYSTEM
-117   C08F
-118   C08F 2A 7D C2             ld      hl, (FILE_SYSTEM.DIRECTORY2x_ADDRESS)       ; File system for 2.x ROM
-119   C092
-120   C092 3E C0                ld      a, high(CART_START_ADDRESS)                 ; Convert ROM address to CART address
-121   C094 B4                   or      h
-122   C095 67                   ld      h, a
-123   C096
-124   C096 3A 7A C2             ld      a, (FILE_SYSTEM.FILES2x_COUNT)              ; Get file count
-125   C099 C9                   ret
-126   C09A
-127   C09A              SET_VERSION1x_FILE_SYSTEM:
-128   C09A 2A 7B C2             ld      hl, (FILE_SYSTEM.DIRECTORY1x_ADDRESS)       ; File system for 1.x ROM
-129   C09D
-130   C09D 3E C0                ld      a, high(CART_START_ADDRESS)                 ; Convert ROM address to CART address
-131   C09F B4                   or      h
-132   C0A0 67                   ld      h, a
-133   C0A1
-134   C0A1 3A 79 C2             ld      a, (FILE_SYSTEM.FILES1x_COUNT)              ; Get file count
-135   C0A4 C9                   ret
-136   C0A5
-137   C0A5                     ;---------------------------------------------------------------------
-138   C0A5                     ; System function handler
-139   C0A5              SYSTEM_FUNCTION:
-140   C0A5 08                   ex      af,af'                      ; Get function code to AF
-141   C0A6 F5                   push    af                          ; Save it on stack
-142   C0A7
-143   C0A7 E6 70                and     SYSTEM_FUNCTION_CLASS_MASK  ; Check if it is cassette class
-144   C0A9 FE 50                cp      CAS_FUNCTION_CLASS
-145   C0AB CA B3 C0             jp      z, HANDLE_CAS_FUNCTIONS
-146   C0AE
-147   C0AE F1                   pop     af                          ; Not cassette function, restore function code
-148   C0AF
-149   C0AF              NOT_KNOWN_CAS_FUNCTION:
-150   C0AF 08                   ex      af,af'                      ; Restore function code to AF'
-151   C0B0 C3 8D 0C             jp      SYSTEM_FUNCTON_PASS         ; and continus with the original ROM routine
-152   C0B3
-153   C0B3              HANDLE_CAS_FUNCTIONS:
-154   C0B3 F1                   pop     af                          ; Restore function code
-155   C0B4 E5                   push    hl                          ; Save HL
-156   C0B5
-157   C0B5                      ; Determine CAS function
-158   C0B5 FE D3                cp      a, CAS_FN_OPEN
-159   C0B7 CA CD C0             jp      z, CAS_OPEN
-160   C0BA
-161   C0BA FE D1                cp      a, CAS_FN_CHIN
-162   C0BC CA 38 C1             jp      z, CAS_CH_IN
-163   C0BF
-164   C0BF FE D2                cp      a, CAS_FN_BKIN
-165   C0C1 CA 58 C1             jp      z, CAS_BKIN
-166   C0C4
-167   C0C4 FE D4                cp      a, CAS_FN_CLOSE_RD
-168   C0C6 CA 75 C1             jp      z, CAS_CLOSE_RD
-169   C0C9
-170   C0C9 E1                   pop     hl                          ; Restore HL
-171   C0CA C3 AF C0             jp      NOT_KNOWN_CAS_FUNCTION
-172   C0CD
-173   C0CD                      ;*********************************************************************
-174   C0CD                      ;* Cassette Functions
+ 73   C05E 4E                   ld      c,  (hl)                        ; Load length
+ 74   C05F 23                   inc     hl
+ 75   C060 46                   ld      b,  (hl)
+ 76   C061
+ 77   C061 6B                   ld      l, e
+ 78   C062 62                   ld      h, d
+ 79   C063 11 EF 19     	ld	de, BASIC_PROGRAM_START
+ 80   C066
+ 81   C066 CD 50 0C     	call    COPY_PROGRAM_TO_RAM
+ 82   C069
+ 83   C069              	; setup BASIC program location
+ 84   C069 21 EF 19             ld	hl, BASIC_PROGRAM_START
+ 85   C06C 22 20 17     	ld	(1720h), hl
+ 86   C06F 22 22 17     	ld	(1722h), hl
+ 87   C072
+ 88   C072              	; Start program
+ 89   C072 3A B7 0E     	ld	a,(VERSION)
+ 90   C075 B7           	or      a
+ 91   C076 CA EF 0C     	jp	z, BASIC_RUN_1x
+ 92   C079
+ 93   C079                      ; Start program routine for 2.x version rom
+ 94   C079                      ; set BASIC flag to no start screen, no prompt, no new command and autostart
+ 95   C079 3E 0F                ld	a, 0fh
+ 96   C07B 32 B6 0E             ld	(BASIC_FLAG), a
+ 97   C07E
+ 98   C07E              	; load return address
+ 99   C07E 2A 05 0C     	ld	hl,(ROM_RETURN_ADDRESS)
+100   C081
+101   C081              	; Set memory map to: SYS, U1, U2, CART
+102   C081 3E 20        	ld	a, P_SYS_U1_U2_CART
+103   C083 32 03 00             ld      (P_SAVE), A
+104   C086 D3 02                out     (PAGE_REG), A
+105   C088
+106   C088              	; return back to ROM
+107   C088 E9           	jp	(hl)
+108   C089
+109   C089                      ;------------------------------------
+110   C089                      ; Load file system area area address
+111   C089                      ; Input: -
+112   C089                      ; Output: HL - File system area address depending on the basic version
+113   C089                      ;          A - Number of files in the file system
+114   C089                      ; Destroys: A, F
+115   C089              GET_FILE_SYSTEM_INFO:
+116   C089 3A B7 0E             ld      a, (VERSION)
+117   C08C B7                   or      a
+118   C08D 28 0B                jr      z, SET_VERSION1x_FILE_SYSTEM
+119   C08F
+120   C08F 2A 2E C3             ld      hl, (FILE_SYSTEM.DIRECTORY2x_ADDRESS)       ; File system for 2.x ROM
+121   C092
+122   C092 3E C0                ld      a, high(CART_START_ADDRESS)                 ; Convert ROM address to CART address
+123   C094 B4                   or      h
+124   C095 67                   ld      h, a
+125   C096
+126   C096 3A 2B C3             ld      a, (FILE_SYSTEM.FILES2x_COUNT)              ; Get file count
+127   C099 C9                   ret
+128   C09A
+129   C09A              SET_VERSION1x_FILE_SYSTEM:
+130   C09A 2A 2C C3             ld      hl, (FILE_SYSTEM.DIRECTORY1x_ADDRESS)       ; File system for 1.x ROM
+131   C09D
+132   C09D 3E C0                ld      a, high(CART_START_ADDRESS)                 ; Convert ROM address to CART address
+133   C09F B4                   or      h
+134   C0A0 67                   ld      h, a
+135   C0A1
+136   C0A1 3A 2A C3             ld      a, (FILE_SYSTEM.FILES1x_COUNT)              ; Get file count
+137   C0A4 C9                   ret
+138   C0A5
+139   C0A5                     ;---------------------------------------------------------------------
+140   C0A5                     ; System function handler
+141   C0A5              SYSTEM_FUNCTION:
+142   C0A5 08                   ex      af,af'                      ; Get function code to AF
+143   C0A6 F5                   push    af                          ; Save it on stack
+144   C0A7
+145   C0A7 E6 70                and     SYSTEM_FUNCTION_CLASS_MASK  ; Check if it is cassette class
+146   C0A9 FE 50                cp      CAS_FUNCTION_CLASS
+147   C0AB CA B3 C0             jp      z, HANDLE_CAS_FUNCTIONS
+148   C0AE
+149   C0AE F1                   pop     af                          ; Not cassette function, restore function code
+150   C0AF
+151   C0AF              NOT_KNOWN_CAS_FUNCTION:
+152   C0AF 08                   ex      af,af'                      ; Restore function code to AF'
+153   C0B0 C3 95 0B             jp      SYSTEM_FUNCTION_PASS        ; and continus with the original ROM routine
+154   C0B3
+155   C0B3              HANDLE_CAS_FUNCTIONS:
+156   C0B3 F1                   pop     af                          ; Restore function code
+157   C0B4 E5                   push    hl                          ; Save HL
+158   C0B5
+159   C0B5                      ; Determine CAS function
+160   C0B5 FE D3                cp      a, CAS_FN_OPEN
+161   C0B7 CA CD C0             jp      z, CAS_OPEN
+162   C0BA
+163   C0BA FE D1                cp      a, CAS_FN_CHIN
+164   C0BC CA 94 C1             jp      z, CAS_CH_IN
+165   C0BF
+166   C0BF FE D2                cp      a, CAS_FN_BKIN
+167   C0C1 CA BA C1             jp      z, CAS_BKIN
+168   C0C4
+169   C0C4 FE D4                cp      a, CAS_FN_CLOSE_RD
+170   C0C6 CA E8 C1             jp      z, CAS_CLOSE_RD
+171   C0C9
+172   C0C9 E1                   pop     hl                          ; Restore HL
+173   C0CA C3 AF C0             jp      NOT_KNOWN_CAS_FUNCTION
+174   C0CD
 175   C0CD                      ;*********************************************************************
-176   C0CD
-177   C0CD                      ;---------------------------------------------------------------------
-178   C0CD                      ; Casette: Open file
-179   C0CD                      ; Input:  DE - file name pointer
-180   C0CD                      ; Output: A - status code
-181   C0CD                      ;         DE - file name pointer
-182   C0CD              CAS_OPEN:
-183   C0CD 6B                   ld      l, e                        ; File name pointer
-184   C0CE 62                   ld      h, d
-185   C0CF
-186   C0CF                      ; Convert file name to uppercase
-187   C0CF 46                   ld      b,  (hl)                    ; File name length
-188   C0D0 23                   inc     hl
-189   C0D1
-190   C0D1              FILENAME_TOUPPER_LOOP:
-191   C0D1 7E                   ld      a,  (hl)                    ; load character
-192   C0D2 FE 61                cp      a, 'a'
-193   C0D4 38 12                jr      c, STORE_FILENAME_CHARACTER
-194   C0D6 FE 7B                cp      a, 'z' + 1
-195   C0D8 30 04                jr      nc, FILENAME_CHECK_ACCENTED_CHARACTERS
-196   C0DA E6 DF                and     $df                         ; letter to upercase
-197   C0DC 18 0A                jr      STORE_FILENAME_CHARACTER
-198   C0DE
-199   C0DE              FILENAME_CHECK_ACCENTED_CHARACTERS:
-200   C0DE FE 90                cp      a, $90                      ; accented letters
-201   C0E0 38 06                jr      c, STORE_FILENAME_CHARACTER
-202   C0E2 FE 99                cp      a, $99
-203   C0E4 30 02                jr      nc, STORE_FILENAME_CHARACTER
-204   C0E6 D6 10                sub     a, $10
-205   C0E8
-206   C0E8              STORE_FILENAME_CHARACTER:
-207   C0E8 77                   ld      (hl), a
-208   C0E9 23                   inc     hl
-209   C0EA 10 E5                djnz    FILENAME_TOUPPER_LOOP
-210   C0EC
-211   C0EC                      ; Find filename in the ROM file system
-212   C0EC CD 88 C0             call    GET_FILE_SYSTEM_INFO         ; Get file system address and number of files
-213   C0EF 4F                   ld      c, a                         ; Number of files in the file system
-214   C0F0
-215   C0F0              COMPARE_FILE_NAMES:
-216   C0F0 D5                   push    de                           ; save file name address
-217   C0F1 E5                   push    hl                           ; save file system entry address
-218   C0F2
-219   C0F2                      ; get file name length to B
-220   C0F2 EB                   ex      hl, de
-221   C0F3 46                   ld      b, (hl)
-222   C0F4 23                   inc     hl
-223   C0F5 EB                   ex      hl, de
-224   C0F6
-225   C0F6              COMPARE_FILENAME_CHARACTERS:
-226   C0F6 1A                   ld      a, (de)                      ; Compare file name characters
-227   C0F7 BE                   cp      (hl)
-228   C0F8
-229   C0F8 20 2E                jr      nz, CHECK_NEXT_FILE          ; non matching -> next file
-230   C0FA
-231   C0FA 23                   inc     hl
-232   C0FB 13                   inc     de
-233   C0FC
-234   C0FC 10 F8                djnz    COMPARE_FILENAME_CHARACTERS
-235   C0FE
-236   C0FE                      ; file found -> get address and length
-237   C0FE C1                   pop     bc                           ; Restore file system entry address
-238   C0FF 21 10 00             ld      hl,  FileSystemEntry.FILE_ADDRESS
-239   C102 09                   add     hl, bc
-240   C103
-241   C103                      ; store file address in CURRENT_FILE_ADDRESS
-242   C103 7E                   ld      a, (hl)
-243   C104 32 0C 0C             ld      (CURRENT_FILE_ADDRESS), a
-244   C107 23                   inc     hl
-245   C108 7E                   ld      a, (hl)
-246   C109 32 0D 0C             ld      (CURRENT_FILE_ADDRESS+1), a
-247   C10C 23                   inc     hl
-248   C10D
-249   C10D                      ; store file length in CURRENT_FILE_LENGTH and CAS header
-250   C10D 7E                   ld      a, (hl)
-251   C10E 32 0A 0C             ld      (CURRENT_FILE_LENGTH), a
-252   C111 32 22 0C             ld      (CAS_HEADER.FileLength), a
-253   C114 23                   inc     hl
-254   C115 7E                   ld      a, (hl)
-255   C116 32 0B 0C             ld      (CURRENT_FILE_LENGTH+1), a
-256   C119 32 23 0C             ld      (CAS_HEADER.FileLength+1), a
-257   C11C
-258   C11C AF                   xor     a
-259   C11D 32 0E 0C             ld      (CURRENT_CAS_HEADER_POS), a ; reset CAS header pos for CH_IN
-260   C120 32 6B 0B             ld      (BUFFER), a                 ; Set non-buffered file
-261   C123
-262   C123 D1                   pop     de                          ; restore file name pointer
-263   C124 AF                   xor     a                           ; no error
-264   C125
-265   C125 C3 8B C1             jp      CAS_RETURN
-266   C128
-267   C128              CHECK_NEXT_FILE:
-268   C128 E1                   pop     hl                          ; file system entry address
-269   C129 11 14 00             ld      de, FileSystemEntry         ; next entry
-270   C12C 19                   add     hl, de
-271   C12D
-272   C12D D1                   pop     de                          ; file name pointer
-273   C12E
-274   C12E 0D                   dec     c
-275   C12F 79                   ld      a,  c
-276   C130 B7                   or      a
-277   C131 20 BD                jr      nz, COMPARE_FILE_NAMES
-278   C133
-279   C133                      ; file not found
-280   C133 3E E9                ld      a, CAS_ERR_NO_OPEN_FILE
-281   C135
-282   C135 C3 8B C1             jp      CAS_RETURN
-283   C138
-284   C138                      ;---------------------------------------------------------------------
-285   C138                      ; Casette: Character input
-286   C138                      ; Input: -
-287   C138                      ; Output: C - character
-288   C138                      ;         A - status code
-289   C138              CAS_CH_IN:
-290   C138 3A 0E 0C             ld      a,(CURRENT_CAS_HEADER_POS)
-291   C13B FE 10                cp      CASHeader
-292   C13D 30 14                jr      nc, CAS_CH_IN_EOF
-293   C13F
-294   C13F 21 20 0C             ld      hl, CAS_HEADER              ; Calculate CAS header address (A+CAS_HEADER)
-295   C142 85                   add     a, l                        ; A = A+L
-296   C143 6F                   ld      l, a                        ; L = A+L
-297   C144 8C                   adc     a, h                        ; A = A+L+H+carry
-298   C145 95                   sub     l                           ; A = H+carry
-299   C146 67                   ld      h, a                        ; H = H+carry
-300   C147
-301   C147 4E                   ld      c,  (hl)                    ; Load CAS header data
-302   C148
-303   C148 3A 0E 0C             ld      a, (CURRENT_CAS_HEADER_POS) ; Increment CAS pointer
-304   C14B 3C                   inc     a
-305   C14C 32 0E 0C             ld      (CURRENT_CAS_HEADER_POS), a
-306   C14F
-307   C14F AF                   xor     a                           ; success
-308   C150 C3 8B C1             jp      CAS_RETURN
-309   C153
-310   C153              CAS_CH_IN_EOF:
-311   C153 3E EC                ld      a, CAS_ERR_EOF
-312   C155 C3 8B C1             jp      CAS_RETURN
-313   C158
-314   C158                      ;---------------------------------------------------------------------
-315   C158                      ; Casette: Block input
-316   C158                      ; Input: DE - Buffer address
-317   C158                      ;        BC - Length of the buffer
-318   C158                      ; Output: A - status code
-319   C158              CAS_BKIN:
-320   C158 2A 0A 0C             ld      hl, (CURRENT_FILE_LENGTH)
-321   C15B B7                   or      a
-322   C15C ED 42                sbc     hl, bc
-323   C15E 38 10                jr      c, CAS_BKIN_WRONG_SIZE
-324   C160
-325   C160 22 0A 0C             ld      (CURRENT_FILE_LENGTH), hl   ; Update remaining length
-326   C163
-327   C163 2A 0C 0C             ld      hl, (CURRENT_FILE_ADDRESS)  ; load file address
-328   C166 CD 30 0C             call    COPY_PROGRAM_TO_RAM
-329   C169 22 0C 0C             ld      (CURRENT_FILE_ADDRESS), hl  ; Update address
-330   C16C
-331   C16C AF                   xor     a                           ; Success
-332   C16D C3 8B C1             jp      CAS_RETURN
-333   C170
-334   C170              CAS_BKIN_WRONG_SIZE:
-335   C170 3E E7                ld      a, CAS_ERR_INTERNAL         ; wrong byte number
-336   C172 C3 8B C1             jp      CAS_RETURN
-337   C175
-338   C175                      ;---------------------------------------------------------------------
-339   C175                      ; Casette: Close file (read mode)
-340   C175                      ; Input: -
-341   C175                      ; Output: A - status code
-342   C175              CAS_CLOSE_RD:
-343   C175 AF                   xor     a
-344   C176
-345   C176                      ; reset file address
-346   C176 32 0C 0C             ld      (CURRENT_FILE_ADDRESS), a
-347   C179 32 0D 0C             ld      (CURRENT_FILE_ADDRESS+1), a
-348   C17C
-349   C17C                      ; reset file length
-350   C17C 32 0A 0C             ld      (CURRENT_FILE_LENGTH), a
-351   C17F 32 22 0C             ld      (CAS_HEADER.FileLength), a
-352   C182 32 0B 0C             ld      (CURRENT_FILE_LENGTH+1), a
-353   C185 32 23 0C             ld      (CAS_HEADER.FileLength+1), a
-354   C188
-355   C188 C3 8B C1             jp      CAS_RETURN
-356   C18B
-357   C18B                      ;---------------------------------------------------------------------
-358   C18B                      ; Returns from CAS function
-359   C18B              CAS_RETURN:
-360   C18B E1                   pop hl                                          ; Restore HL
-361   C18C B7                   or a                                            ; Set flags according to error code
-362   C18D C3 37 0B             jp SYSTEM_FUNCTION_RETURN
-363   C190
-364   C190
-365   C190                      ; *** Other modules ***
-366   C190                      include "ramfunctions.a80"
+176   C0CD                      ;* Cassette Functions
+177   C0CD                      ;*********************************************************************
+178   C0CD
+179   C0CD                      ;---------------------------------------------------------------------
+180   C0CD                      ; Casette: Open file
+181   C0CD                      ; Input:  DE - file name pointer
+182   C0CD                      ; Output: A - status code
+183   C0CD                      ;         DE - file name pointer
+184   C0CD              CAS_OPEN:
+185   C0CD                      ; Check if ROM file is already opened
+186   C0CD 3A B8 0E             ld      a, (FILE_OPENED_FLAG)
+187   C0D0 B7                   or      a
+188   C0D1 28 05                jr      z, CHECK_FILE_NAME
+189   C0D3
+190   C0D3                      ; file already opened
+191   C0D3 3E EB                ld      a, CAS_ERR_ALREADY_OPENED
+192   C0D5 C3 01 C2             jp      CAS_RETURN
+193   C0D8
+194   C0D8              CHECK_FILE_NAME:
+195   C0D8 6B                   ld      l, e                        ; HL = File name pointer
+196   C0D9 62                   ld      h, d
+197   C0DA D5                   push    de                          ; save file name pointer
+198   C0DB 11 F5 0B             ld      de, FILE_NAME_BUFFER        ; temporary file name storage
+199   C0DE
+200   C0DE                      ; Convert file name to uppercase
+201   C0DE 7E                   ld      a,  (hl)                    ; load file name length
+202   C0DF FE 10                cp      a, CART_MAX_FILENAME_LENGTH ; maximize file name length
+203   C0E1 38 02                jr      c, FILENAME_LENGTH_OK
+204   C0E3 3E 10                ld      a, CART_MAX_FILENAME_LENGTH
+205   C0E5
+206   C0E5              FILENAME_LENGTH_OK:
+207   C0E5 32 F4 0B             ld      (FILE_NAME_LENGTH), a       ; save file name length
+208   C0E8 47                   ld      b, a                        ; b = file name length
+209   C0E9 23                   inc     hl
+210   C0EA
+211   C0EA              FILENAME_TOUPPER_LOOP:
+212   C0EA 7E                   ld      a,  (hl)                    ; load character
+213   C0EB FE 61                cp      a, 'a'
+214   C0ED 38 12                jr      c, STORE_FILENAME_CHARACTER
+215   C0EF FE 7B                cp      a, 'z' + 1
+216   C0F1 30 04                jr      nc, FILENAME_CHECK_ACCENTED_CHARACTERS
+217   C0F3 E6 DF                and     $df                         ; letter to upercase
+218   C0F5 18 0A                jr      STORE_FILENAME_CHARACTER
+219   C0F7
+220   C0F7              FILENAME_CHECK_ACCENTED_CHARACTERS:
+221   C0F7 FE 90                cp      a, $90                      ; accented letters
+222   C0F9 38 06                jr      c, STORE_FILENAME_CHARACTER
+223   C0FB FE 99                cp      a, $99
+224   C0FD 30 02                jr      nc, STORE_FILENAME_CHARACTER
+225   C0FF D6 10                sub     a, $10
+226   C101
+227   C101              STORE_FILENAME_CHARACTER:
+228   C101 12                   ld      (de), a
+229   C102 13                   inc     de
+230   C103 23                   inc     hl
+231   C104 10 E4                djnz    FILENAME_TOUPPER_LOOP
+232   C106
+233   C106                      ; append '.CAS' if there is no extension
+234   C106 3A F4 0B             ld      a, (FILE_NAME_LENGTH)
+235   C109 47                   ld      b, a
+236   C10A 21 F5 0B             ld      hl, FILE_NAME_BUFFER
+237   C10D
+238   C10D              FIND_EXTENSION:
+239   C10D 7E                   ld      a, (hl)
+240   C10E 23                   inc     hl
+241   C10F FE 2E                cp      a, '.'
+242   C111 28 20                jr      z, FIND_FILE_NAME
+243   C113
+244   C113 10 F8                djnz    FIND_EXTENSION
+245   C115
+246   C115                      ; no extension, append '.CAS' if buffer is long enough
+247   C115 3A F4 0B             ld      a, (FILE_NAME_LENGTH)
+248   C118 FE 0D                cp      a, CART_MAX_FILENAME_LENGTH - CAS_EXTENSION_LENGTH + 1
+249   C11A 30 17                jr      nc, FIND_FILE_NAME
+250   C11C
+251   C11C                      ; append extension
+252   C11C 5F                   ld      e, a
+253   C11D C6 04                add     a, CAS_EXTENSION_LENGTH
+254   C11F 32 F4 0B             ld      (FILE_NAME_LENGTH), a       ; Update file name length
+255   C122
+256   C122 3E F5                ld      a, low(FILE_NAME_BUFFER)    ; Determine append position
+257   C124 83                   add     a, e
+258   C125 5F                   ld      e, a
+259   C126 3E 00                ld      a, 0
+260   C128 CE 0B                adc     a, high(FILE_NAME_BUFFER)
+261   C12A 57                   ld      d, a
+262   C12B
+263   C12B 21 06 C2             ld      hl, CAS_EXTENSION
+264   C12E 01 04 00             ld      bc, CAS_EXTENSION_LENGTH
+265   C131 ED B0                ldir                                ; Append extension
+266   C133
+267   C133              FIND_FILE_NAME:
+268   C133                      ; Find filename in the ROM file system
+269   C133 CD 89 C0             call    GET_FILE_SYSTEM_INFO         ; Get file system address and number of files
+270   C136 4F                   ld      c, a                         ; Number of files in the file system
+271   C137
+272   C137              COMPARE_FILE_NAMES:
+273   C137 E5                   push    hl                           ; save file system entry address
+274   C138
+275   C138                      ; get file name length to B and file name buffer to DE
+276   C138 3A F4 0B             ld      a, (FILE_NAME_LENGTH)
+277   C13B 47                   ld      b, a
+278   C13C 11 F5 0B             ld      de, FILE_NAME_BUFFER
+279   C13F
+280   C13F              COMPARE_FILENAME_CHARACTERS:
+281   C13F 1A                   ld      a, (de)                      ; Compare file name characters
+282   C140 BE                   cp      (hl)
+283   C141
+284   C141 20 41                jr      nz, CHECK_NEXT_FILE          ; non matching -> next file
+285   C143
+286   C143 23                   inc     hl
+287   C144 13                   inc     de
+288   C145
+289   C145 10 F8                djnz    COMPARE_FILENAME_CHARACTERS
+290   C147
+291   C147                      ; file found
+292   C147 3E 01                ld      a, 1                         ; set file opened flag
+293   C149 32 B8 0E             ld      (FILE_OPENED_FLAG), a
+294   C14C
+295   C14C                      ; Copy RAM code
+296   C14C 21 0A C2             ld	hl, RAM_FUNCTIONS_STORAGE
+297   C14F 11 05 0C     	ld	de, RAM_FUNCTIONS
+298   C152 01 F8 00     	ld	bc, RAM_FUNCTIONS_CODE_LENGTH
+299   C155 ED B0                ldir
+300   C157
+301   C157                      ; get address and length
+302   C157 C1                   pop     bc                           ; Restore file system entry address
+303   C158 21 10 00             ld      hl,  FileSystemEntry.FILE_ADDRESS
+304   C15B 09                   add     hl, bc
+305   C15C
+306   C15C                      ; store file address in CURRENT_FILE_ADDRESS
+307   C15C 7E                   ld      a, (hl)
+308   C15D 32 0A 0C             ld      (CURRENT_FILE_ADDRESS), a
+309   C160 23                   inc     hl
+310   C161 7E                   ld      a, (hl)
+311   C162 32 0B 0C             ld      (CURRENT_FILE_ADDRESS+1), a
+312   C165 23                   inc     hl
+313   C166
+314   C166                      ; store file length in CURRENT_FILE_LENGTH and CAS header
+315   C166 7E                   ld      a, (hl)
+316   C167 32 08 0C             ld      (CURRENT_FILE_LENGTH), a
+317   C16A 32 0F 0C             ld      (CAS_HEADER.FileLength), a
+318   C16D 23                   inc     hl
+319   C16E 7E                   ld      a, (hl)
+320   C16F 32 09 0C             ld      (CURRENT_FILE_LENGTH+1), a
+321   C172 32 10 0C             ld      (CAS_HEADER.FileLength+1), a
+322   C175
+323   C175 AF                   xor     a
+324   C176 32 0C 0C             ld      (CURRENT_CAS_HEADER_POS), a ; reset CAS header pos for CH_IN
+325   C179 32 6B 0B             ld      (BUFFER), a                 ; Set non-buffered file
+326   C17C
+327   C17C D1                   pop     de                          ; restore file name pointer
+328   C17D 11 F4 0B             ld      de, FILE_NAME_LENGTH        ; return back the modified file name (FILE_NAME_BUFFER) and length (FILE_NAME_LENGTH)
+329   C180
+330   C180 AF                   xor     a                           ; no error
+331   C181 C3 01 C2             jp      CAS_RETURN
+332   C184
+333   C184              CHECK_NEXT_FILE:
+334   C184 E1                   pop     hl                          ; file system entry address
+335   C185 11 14 00             ld      de, FileSystemEntry         ; next entry
+336   C188 19                   add     hl, de
+337   C189
+338   C189 0D                   dec     c
+339   C18A 79                   ld      a,  c
+340   C18B B7                   or      a
+341   C18C 20 A9                jr      nz, COMPARE_FILE_NAMES
+342   C18E
+343   C18E                      ; file not found
+344   C18E D1                   pop     de                          ; restore file name pointer
+345   C18F
+346   C18F              RET_NO_OPEN_FILE_ERROR:
+347   C18F 3E E9                ld      a, CAS_ERR_NO_OPEN_FILE
+348   C191 C3 01 C2             jp      CAS_RETURN
+349   C194
+350   C194                      ;---------------------------------------------------------------------
+351   C194                      ; Casette: Character input
+352   C194                      ; Input: -
+353   C194                      ; Output: C - character
+354   C194                      ;         A - status code
+355   C194              CAS_CH_IN:
+356   C194                      ; check if file is opened
+357   C194 3A B8 0E             ld      a, (FILE_OPENED_FLAG)
+358   C197 B7                   or      a
+359   C198 28 F5                jr      z, RET_NO_OPEN_FILE_ERROR
+360   C19A
+361   C19A                      ; load file position
+362   C19A 3A 0C 0C             ld      a,(CURRENT_CAS_HEADER_POS)
+363   C19D FE 10                cp      CASHeader
+364   C19F 30 14                jr      nc, CAS_CH_IN_EOF
+365   C1A1
+366   C1A1 21 0D 0C             ld      hl, CAS_HEADER              ; Calculate CAS header address (A+CAS_HEADER)
+367   C1A4 85                   add     a, l                        ; A = A+L
+368   C1A5 6F                   ld      l, a                        ; L = A+L
+369   C1A6 8C                   adc     a, h                        ; A = A+L+H+carry
+370   C1A7 95                   sub     l                           ; A = H+carry
+371   C1A8 67                   ld      h, a                        ; H = H+carry
+372   C1A9
+373   C1A9 4E                   ld      c,  (hl)                    ; Load CAS header data
+374   C1AA
+375   C1AA 3A 0C 0C             ld      a, (CURRENT_CAS_HEADER_POS) ; Increment CAS pointer
+376   C1AD 3C                   inc     a
+377   C1AE 32 0C 0C             ld      (CURRENT_CAS_HEADER_POS), a
+378   C1B1
+379   C1B1 AF                   xor     a                           ; success
+380   C1B2 C3 01 C2             jp      CAS_RETURN
+381   C1B5
+382   C1B5              CAS_CH_IN_EOF:
+383   C1B5 3E EC                ld      a, CAS_ERR_EOF
+384   C1B7 C3 01 C2             jp      CAS_RETURN
+385   C1BA
+386   C1BA                      ;---------------------------------------------------------------------
+387   C1BA                      ; Casette: Block input
+388   C1BA                      ; Input: DE - Buffer address
+389   C1BA                      ;        BC - Length of the buffer
+390   C1BA                      ; Output: A - status code
+391   C1BA              CAS_BKIN:
+392   C1BA                      ; check if file is opened
+393   C1BA 3A B8 0E             ld      a, (FILE_OPENED_FLAG)
+394   C1BD B7                   or      a
+395   C1BE 28 CF                jr      z, RET_NO_OPEN_FILE_ERROR
+396   C1C0
+397   C1C0                      ; Check remaining file length
+398   C1C0 2A 08 0C             ld      hl, (CURRENT_FILE_LENGTH)
+399   C1C3 7D                   ld      a, l
+400   C1C4 B4                   or      h
+401   C1C5 28 1C                jr      z, CAS_BKIN_EOF
+402   C1C7
+403   C1C7 B7                   or      a
+404   C1C8 ED 42                sbc     hl, bc
+405   C1CA 30 07                jr      nc, CAS_BKIN_LOAD
+406   C1CC
+407   C1CC                      ; requested length is longer than file length, adjust it
+408   C1CC ED 4B 08 0C          ld      bc, (CURRENT_FILE_LENGTH)   ; Bytes to copy
+409   C1D0 21 00 00             ld      hl, 0                       ; No more remaining bytes
+410   C1D3
+411   C1D3              CAS_BKIN_LOAD:
+412   C1D3 22 08 0C             ld      (CURRENT_FILE_LENGTH), hl   ; Update remaining length
+413   C1D6
+414   C1D6 2A 0A 0C             ld      hl, (CURRENT_FILE_ADDRESS)  ; load file address
+415   C1D9 CD 50 0C             call    COPY_PROGRAM_TO_RAM
+416   C1DC 22 0A 0C             ld      (CURRENT_FILE_ADDRESS), hl  ; Update address
+417   C1DF
+418   C1DF AF                   xor     a                           ; Success
+419   C1E0 C3 01 C2             jp      CAS_RETURN
+420   C1E3
+421   C1E3              CAS_BKIN_EOF:
+422   C1E3 3E EC                ld      a, CAS_ERR_EOF              ; End of file
+423   C1E5 C3 01 C2             jp      CAS_RETURN
+424   C1E8
+425   C1E8                      ;---------------------------------------------------------------------
+426   C1E8                      ; Casette: Close file (read mode)
+427   C1E8                      ; Input: -
+428   C1E8                      ; Output: A - status code
+429   C1E8              CAS_CLOSE_RD:
+430   C1E8 AF                   xor     a
+431   C1E9
+432   C1E9                      ; reset file address
+433   C1E9 32 0A 0C             ld      (CURRENT_FILE_ADDRESS), a
+434   C1EC 32 0B 0C             ld      (CURRENT_FILE_ADDRESS+1), a
+435   C1EF
+436   C1EF                      ; reset file length
+437   C1EF 32 08 0C             ld      (CURRENT_FILE_LENGTH), a
+438   C1F2 32 0F 0C             ld      (CAS_HEADER.FileLength), a
+439   C1F5 32 09 0C             ld      (CURRENT_FILE_LENGTH+1), a
+440   C1F8 32 10 0C             ld      (CAS_HEADER.FileLength+1), a
+441   C1FB
+442   C1FB                      ; reset file opened
+443   C1FB 32 B8 0E             ld      (FILE_OPENED_FLAG), a
+444   C1FE
+445   C1FE C3 01 C2             jp      CAS_RETURN
+446   C201
+447   C201                      ;---------------------------------------------------------------------
+448   C201                      ; Returns from CAS function
+449   C201              CAS_RETURN:
+450   C201 E1                   pop     hl                          ; Restore HL
+451   C202 B7                   or      a                           ; Set flags according to error code
+452   C203 C3 37 0B             jp SYSTEM_FUNCTION_RETURN
+453   C206
+454   C206
+455   C206              CAS_EXTENSION:
+456   C206 2E 43 41 53          db      ".CAS"
+457   C20A              CAS_EXTENSION_LENGTH equ $-CAS_EXTENSION
+458   C20A
+459   C20A                      ; *** Other modules ***
+460   C20A                      include "ramfunctions.a80"
 # file opened: ramfunctions.a80
-  1+  C190                      ; ****************
-  2+  C190                      ; * U0 data area *
-  3+  C190                      ; ****************
-  4+  C190              RAM_DATA_STORAGE:
-  5+  C190                      phase RAM_DATA
-  6+  0C05 02           BASIC_VERSION           db      2           ; ROM version information
-  7+  0C06 00 00        ROM_RETURN_ADDRESS      dw      0           ; Return address for 2.x ROM
-  8+  0C08 00           FILE_IS_OPENED          db      0           ; 1 - file is opened in the ROM filesystem, 0 - no file opened
-  9+  0C09 00           CURRENT_PAGE_INDEX      db      0           ; Used page index 0..3
- 10+  0C0A 00 00        CURRENT_FILE_LENGTH     dw      0           ; Remaining length of the currently opened file
- 11+  0C0C 00 00        CURRENT_FILE_ADDRESS    dw      0           ; Address of the currently opened file
- 12+  0C0E 00           CURRENT_CAS_HEADER_POS  db      0           ; Position in CAS header (for CH_IN function)
- 13+  0C0F 00           CURRENT_FILE_NAME_LEN   db      0           ; Name length of the currently opened file
- 14+  0C10 20 20 20...  CURRENT_FILE_NAME       ds      CART_MAX_FILENAME_LENGTH, ' ' ; Name of the currently opened file
- 15+  0C20
- 16+  0C20                      ; CAS header struct
- 17+  0C20 00 01 00 00  CAS_HEADER  CASHeader
- 17+  0C24 FF 00 00 00
- 17+  0C28 00 00 00 00
- 17+  0C2C...
- 17+  0C2F 00
- 18+  0C30
- 19+  0C30              RAM_DATA_LENGTH equ $-RAM_DATA
- 20+  0C30              	dephase
- 21+  C1BB
- 22+  C1BB                      ; ***********************
- 23+  C1BB                      ; * Initialization code *
- 24+  C1BB                      ; ***********************
- 25+  C1BB
- 26+  C1BB                      ;---------------------------------------------------------------------
- 27+  C1BB                      ; BASIC initialization and version detection program
- 28+  C1BB              BASIC_INITIALIZE_CODE:
- 29+  C1BB                      phase RAM_PROGRAM
- 30+  0C30
- 31+  0C30              BASIC_INITIALIZE:
- 32+  0C30                      ; Set memory map to: U0, U1, U2, SYS
- 33+  0C30 3E 70        	ld	a, P_U0_U1_U2_SYS
- 34+  0C32 32 03 00             ld      (P_SAVE), a
- 35+  0C35 D3 02                out     (PAGE_REG), a
- 36+  0C37
- 37+  0C37              	; determine ROM version (1.x or 2.x)
- 38+  0C37 3A 9F F0     	ld 	a, ($f09f)                  ; Check for 1.2 verion number
- 39+  0C3A FE 0C        	cp	$0c
- 40+  0C3C 20 23        	jr 	nz, BASIC_INITIALIZE_END
- 41+  0C3E
- 42+  0C3E              	; version is 1.x -> store version
- 43+  0C3E 3E 01        	ld	a, 1
- 44+  0C40 32 05 0C     	ld	(BASIC_VERSION), a
- 45+  0C43
- 46+  0C43              	; initialize BASIC storage area
- 47+  0C43 21 00 17     	ld	hl, BASIC_STORAGE_AREA
- 48+  0C46 E5           	push 	hl
- 49+  0C47 DD E1        	pop	ix
- 50+  0C49 01 EF 02     	ld	bc, 02efh
- 51+  0C4C 11 01 17     	ld	de, 1701h
- 52+  0C4F 36 00        	ld	(hl), 0
- 53+  0C51 ED B0        	ldir
- 54+  0C53
- 55+  0C53              	; initialize error handlers
- 56+  0C53 21 5B FB     	ld	hl, 0fb5bh
- 57+  0C56 11 08 00     	ld 	de, 8
- 58+  0C59 01 27 00     	ld	bc, 27h
- 59+  0C5C ED B0        	ldir
- 60+  0C5E
- 61+  0C5E              	; call NEW command
- 62+  0C5E CD 10 DE     	call	0de10h
- 63+  0C61
- 64+  0C61              BASIC_INITIALIZE_END:
- 65+  0C61              	; Set memory map to: U0, U1, U2, CART
- 66+  0C61 3E 30        	ld	a, P_U0_U1_U2_CART
- 67+  0C63 32 03 00             ld      (P_SAVE), a
- 68+  0C66 D3 02                out     (PAGE_REG), a
- 69+  0C68
- 70+  0C68              	; return back to the CART
- 71+  0C68 C9           	ret
- 72+  0C69
- 73+  0C69              BASIC_INITIALIZE_CODE_LENGTH: equ $-RAM_PROGRAM
- 74+  0C69                      dephase
- 75+  C1F4
- 76+  C1F4                      ; *****************
- 77+  C1F4                      ; * RAM Functions *
- 78+  C1F4                      ; *****************
- 79+  C1F4
- 80+  C1F4              RAM_FUNCTIONS_CODE:
- 81+  C1F4                      phase RAM_PROGRAM
- 82+  0C30
- 83+  0C30                      ;---------------------------------------------------------------------
- 84+  0C30                      ; Copies TVC program file from Cart ROM to RAM
- 85+  0C30                      ; Input:  HL - ROM address
- 86+  0C30                      ;         DE - RAM address
- 87+  0C30                      ;         BC - Number of bytes to copy
- 88+  0C30                      ; Output: HL - last byte address of ROM file
- 89+  0C30                      ;         DE - last address of the RAM
- 90+  0C30                      ; Destroys: HL, BC, DE, A, F
- 91+  0C30              COPY_PROGRAM_TO_RAM:
- 92+  0C30                      ; Check length
- 93+  0C30 78                   ld      a, b
- 94+  0C31 B1                   or      a, c
- 95+  0C32 C8                   ret     z                               ; Return is length is zero
- 96+  0C33
- 97+  0C33              	; Set memory map to: U0, U1, U2, CART
- 98+  0C33 3E 30        	ld	a, P_U0_U1_U2_CART
- 99+  0C35 32 03 00             ld      (P_SAVE), a
-100+  0C38 D3 02                out     (PAGE_REG), a
-101+  0C3A
-102+  0C3A                      ; determine ROM page index
-103+  0C3A 7C                   ld      a, h
-104+  0C3B CB 3F                srl     a                               ; Divide by 64 (for the page address)
-105+  0C3D CB 3F                srl     a
-106+  0C3F CB 3F                srl     a
-107+  0C41 CB 3F                srl     a
-108+  0C43 CB 3F                srl     a
-109+  0C45 CB 3F                srl     a
-110+  0C47
-111+  0C47 32 09 0C             ld      (CURRENT_PAGE_INDEX), a
-112+  0C4A
-113+  0C4A                      ; set page index
-114+  0C4A CD 73 0C             call    CHANGE_ROM_PAGE
-115+  0C4D
-116+  0C4D                      ; convert ROM address to CART address
-117+  0C4D 3E C0                ld      a, high(CART_START_ADDRESS)
-118+  0C4F B4                   or      h
-119+  0C50 67                   ld      h, a
-120+  0C51
-121+  0C51              PROGRAM_COPY_LOOP:
-122+  0C51 ED A0                ldi                                     ; copy byte
-123+  0C53
-124+  0C53                      ; check remaining bytes
-125+  0C53 E2 6F 0C             jp      po, END_PROGRAM_COPY
-126+  0C56
-127+  0C56                      ; check for page switch
-128+  0C56 7C                   ld      a, h
-129+  0C57 FE FF                cp      high(PAGE0_SELECT)
-130+  0C59 38 F6                jr      c, PROGRAM_COPY_LOOP
-131+  0C5B
-132+  0C5B 7D                   ld      a,  l
-133+  0C5C FE FC                cp      low(PAGE0_SELECT)
-134+  0C5E 38 F1                jr      c, PROGRAM_COPY_LOOP
-135+  0C60
-136+  0C60                      ; page end reached -> switch page
-137+  0C60 3A 09 0C             ld      a, (CURRENT_PAGE_INDEX)
-138+  0C63 3C                   inc     a
-139+  0C64 32 09 0C             ld      (CURRENT_PAGE_INDEX), a
-140+  0C67
-141+  0C67 CD 73 0C             call    CHANGE_ROM_PAGE
-142+  0C6A
-143+  0C6A                      ; update page ROM address
-144+  0C6A 21 07 C0             ld      hl, PAGE_DATA_START_ADDRESS
-145+  0C6D
-146+  0C6D 18 E2                jr      PROGRAM_COPY_LOOP
-147+  0C6F
-148+  0C6F              END_PROGRAM_COPY:
-149+  0C6F 3A FC FF             ld      a, (PAGE0_SELECT)               ; Select PAGE0
-150+  0C72 C9                   ret
-151+  0C73
-152+  0C73                      ;---------------------------------------------------------------------
-153+  0C73                      ; Changes ROM page according current page index (CURRENT_PAGE_INDEX) variable
-154+  0C73              CHANGE_ROM_PAGE:
-155+  0C73 E5                   push    hl                              ; Save ROM address
-156+  0C74 3A 09 0C             ld      a, (CURRENT_PAGE_INDEX)
-157+  0C77 21 FC FF             ld      hl, PAGE0_SELECT
-158+  0C7A B5                   or      l
-159+  0C7B 6F                   ld      l, a
-160+  0C7C 7E                   ld      a,  (hl)                        ; Change page
-161+  0C7D E1                   pop     hl
-162+  0C7E
-163+  0C7E C9                   ret
+  1+  C20A                      ; ********************************
+  2+  C20A                      ; * U0 area for data and program *
+  3+  C20A                      ; ********************************
+  4+  C20A              RAM_FUNCTIONS_STORAGE:
+  5+  C20A                      phase RAM_FUNCTIONS
+  6+  0C05 00 00        ROM_RETURN_ADDRESS      dw      0           ; Return address for 2.x ROM
+  7+  0C07 00           CURRENT_PAGE_INDEX      db      0           ; Used page index 0..3
+  8+  0C08 00 00        CURRENT_FILE_LENGTH     dw      0           ; Remaining length of the currently opened file
+  9+  0C0A 00 00        CURRENT_FILE_ADDRESS    dw      0           ; Address of the currently opened file
+ 10+  0C0C 00           CURRENT_CAS_HEADER_POS  db      0           ; Position in CAS header (for CH_IN function)
+ 11+  0C0D
+ 12+  0C0D                      ; CAS header struct
+ 13+  0C0D 00 01 00 00  CAS_HEADER  CASHeader
+ 13+  0C11 FF 00 00 00
+ 13+  0C15 00 00 00 00
+ 13+  0C19...
+ 13+  0C1C 00
+ 14+  0C1D
+ 15+  0C1D                      ; ***********************
+ 16+  0C1D                      ; * Initialization code *
+ 17+  0C1D                      ; ***********************
+ 18+  0C1D
+ 19+  0C1D                      ;---------------------------------------------------------------------
+ 20+  0C1D                      ; BASIC initialization and version detection program
+ 21+  0C1D
+ 22+  0C1D              BASIC_INITIALIZE:
+ 23+  0C1D                      ; Set memory map to: U0, U1, U2, SYS
+ 24+  0C1D 3E 70        	ld	a, P_U0_U1_U2_SYS
+ 25+  0C1F 32 03 00             ld      (P_SAVE), a
+ 26+  0C22 D3 02                out     (PAGE_REG), a
+ 27+  0C24
+ 28+  0C24              	; determine ROM version (1.x or 2.x)
+ 29+  0C24 3A B7 0E     	ld 	a, (VERSION)                  ; Check for 1.x verion number
+ 30+  0C27 B7           	or      a                             ; version is 0 for 1.x ROM
+ 31+  0C28 20 1E        	jr 	nz, BASIC_INITIALIZE_END      ; Version is 2.x -> no more action
+ 32+  0C2A
+ 33+  0C2A              	; version is 1.x
+ 34+  0C2A              	; initialize BASIC storage area
+ 35+  0C2A 21 00 17     	ld	hl, BASIC_STORAGE_AREA
+ 36+  0C2D E5           	push 	hl
+ 37+  0C2E DD E1        	pop	ix
+ 38+  0C30 01 EF 02     	ld	bc, $02ef
+ 39+  0C33 11 01 17     	ld	de, $1701
+ 40+  0C36 36 00        	ld	(hl), 0
+ 41+  0C38 ED B0        	ldir
+ 42+  0C3A
+ 43+  0C3A              	; initialize error handlers
+ 44+  0C3A 21 5B FB     	ld	hl, $0fb5b
+ 45+  0C3D 11 08 00     	ld 	de, 8
+ 46+  0C40 01 27 00     	ld	bc, $27
+ 47+  0C43 ED B0        	ldir
+ 48+  0C45
+ 49+  0C45              	; call NEW command
+ 50+  0C45 CD 10 DE     	call	0de10h
+ 51+  0C48
+ 52+  0C48              BASIC_INITIALIZE_END:
+ 53+  0C48              	; Set memory map to: U0, U1, U2, CART
+ 54+  0C48 3E 30        	ld	a, P_U0_U1_U2_CART
+ 55+  0C4A 32 03 00             ld      (P_SAVE), a
+ 56+  0C4D D3 02                out     (PAGE_REG), a
+ 57+  0C4F
+ 58+  0C4F              	; return back to the CART
+ 59+  0C4F C9           	ret
+ 60+  0C50
+ 61+  0C50                      ; **********************
+ 62+  0C50                      ; * RAM File Functions *
+ 63+  0C50                      ; **********************
+ 64+  0C50
+ 65+  0C50                      ;---------------------------------------------------------------------
+ 66+  0C50                      ; Copies TVC program file from Cart ROM to RAM
+ 67+  0C50                      ; Input:  HL - ROM address
+ 68+  0C50                      ;         DE - RAM address
+ 69+  0C50                      ;         BC - Number of bytes to copy
+ 70+  0C50                      ; Output: HL - last byte address of ROM file
+ 71+  0C50                      ;         DE - last address of the RAM
+ 72+  0C50                      ; Destroys: HL, BC, DE, A, F
+ 73+  0C50              COPY_PROGRAM_TO_RAM:
+ 74+  0C50                      ; Check length
+ 75+  0C50 78                   ld      a, b
+ 76+  0C51 B1                   or      a, c
+ 77+  0C52 C8                   ret     z                               ; Return if length is zero
+ 78+  0C53
+ 79+  0C53              	; Set memory map to: U0, U1, U2, CART
+ 80+  0C53 3E 30        	ld	a, P_U0_U1_U2_CART
+ 81+  0C55 32 03 00             ld      (P_SAVE), a
+ 82+  0C58 D3 02                out     (PAGE_REG), a
+ 83+  0C5A
+ 84+  0C5A                      ; determine ROM page index
+ 85+  0C5A 7C                   ld      a, h
+ 86+  0C5B CB 3F                srl     a                               ; Divide by 64 (for the page address)
+ 87+  0C5D CB 3F                srl     a
+ 88+  0C5F CB 3F                srl     a
+ 89+  0C61 CB 3F                srl     a
+ 90+  0C63 CB 3F                srl     a
+ 91+  0C65 CB 3F                srl     a
+ 92+  0C67
+ 93+  0C67 32 07 0C             ld      (CURRENT_PAGE_INDEX), a
+ 94+  0C6A
+ 95+  0C6A                      ; set page index
+ 96+  0C6A CD E1 0C             call    CHANGE_ROM_PAGE
+ 97+  0C6D
+ 98+  0C6D                      ; convert ROM address to CART address
+ 99+  0C6D 3E C0                ld      a, high(CART_START_ADDRESS)
+100+  0C6F B4                   or      h
+101+  0C70 67                   ld      h, a
+102+  0C71
+103+  0C71                      if 1 == 0
+104+  0C71 ~                    call    NONCOMPRESSED_COPY
+105+  0C71                      else
+106+  0C71 CD 78 0C             call    COMPRESSED_COPY
+107+  0C74                      endif
+108+  0C74
+109+  0C74              END_PROGRAM_COPY:
+110+  0C74 3A FC FF             ld      a, (PAGE0_SELECT)               ; Select PAGE0
+111+  0C77 C9                   ret
+112+  0C78
+113+  0C78                      ;---------------------------------------------------------------------
+114+  0C78                      ; Copies bytes without decompressing
+115+  0C78                      ; Input:  HL - Source address
+116+  0C78                      ;         DE - Destination address
+117+  0C78                      ;         BC - Number of bytes to copy
+118+  0C78                      if 1 == 0
+119+  0C78 ~            NONCOMPRESSED_COPY:
+120+  0C78 ~            PROGRAM_COPY_LOOP:
+121+  0C78 ~                    ldi                                     ; copy byte
+122+  0C78 ~
+123+  0C78 ~                    ; check remaining bytes
+124+  0C78 ~                    ret      po                             ; return if no more bytes left
+125+  0C78 ~
+126+  0C78 ~                    ; check for page switch
+127+  0C78 ~                    ld      a, h
+128+  0C78 ~                    cp      high(PAGE0_SELECT)
+129+  0C78 ~                    jr      c, PROGRAM_COPY_LOOP
+130+  0C78 ~
+131+  0C78 ~                    ld      a,  l
+132+  0C78 ~                    cp      low(PAGE0_SELECT)
+133+  0C78 ~                    jr      c, PROGRAM_COPY_LOOP
+134+  0C78 ~
+135+  0C78 ~                    ; page end reached -> switch page
+136+  0C78 ~                    ld      a, (CURRENT_PAGE_INDEX)
+137+  0C78 ~                    inc     a
+138+  0C78 ~                    ld      (CURRENT_PAGE_INDEX), a
+139+  0C78 ~
+140+  0C78 ~                    call    CHANGE_ROM_PAGE
+141+  0C78 ~
+142+  0C78 ~                    ; update page ROM address
+143+  0C78 ~                    ld      hl, PAGE_DATA_START_ADDRESS
+144+  0C78 ~
+145+  0C78 ~                    jr      PROGRAM_COPY_LOOP
+146+  0C78 ~
+147+  0C78                      endif
+148+  0C78
+149+  0C78              	if 1 != 0
+150+  0C78              ; -----------------------------------------------------------------------------
+151+  0C78              ; ZX7 decoder by Einar Saukas, Antonio Villena & Metalbrain
+152+  0C78              ; "Standard" version (69 bytes only)
+153+  0C78              ; -----------------------------------------------------------------------------
+154+  0C78              ; Parameters:
+155+  0C78              ;   HL: source address (compressed data)
+156+  0C78              ;   DE: destination address (decompressing)
+157+  0C78              ; -----------------------------------------------------------------------------
+158+  0C78              COMPRESSED_COPY:
+159+  0C78              dzx7_standard:
+160+  0C78 3E 80                ld      a, $80
+161+  0C7A              dzx7s_copy_byte_loop:
+162+  0C7A ED A0                ldi                             ; copy literal byte
+163+  0C7C CD C7 0C             call    UPDATE_SOURCE_ADDRESS
 164+  0C7F
-165+  0C7F                      ;---------------------------------------------------------------------
-166+  0C7F                      ; Starts Basic program for 1.x ROM
-167+  0C7F              BASIC_RUN:
-168+  0C7F                      ; Set memory map to: U0, U1, U2, SYS
-169+  0C7F 3E 70        	ld	a, P_U0_U1_U2_SYS
-170+  0C81 32 03 00             ld      (P_SAVE), a
-171+  0C84 D3 02                out     (PAGE_REG), a
-172+  0C86
-173+  0C86              	; enable interrupts
-174+  0C86 FB           	ei
-175+  0C87
-176+  0C87              	; execute RUN command
-177+  0C87 2A 22 17     	ld	hl, (1722h)
-178+  0C8A C3 23 DE     	jp	0de23h
-179+  0C8D
-180+  0C8D                      ;---------------------------------------------------------------------
-181+  0C8D                      ; Passing System Function call to ROM
-182+  0C8D              SYSTEM_FUNCTON_PASS:
-183+  0C8D 3E 70                ld      a,P_U0_U1_U2_SYS            ; Page in ROM
-184+  0C8F 32 03 00             ld      (P_SAVE),a
-185+  0C92 D3 02                out     (PAGE_REG),a
-186+  0C94
-187+  0C94              SYSTEM_FUNCTION_CHAIN_ADDRESS:
-188+  0C94 C3 00 00             jp      0                           ; Jump to ROM (address will be updates when code is copied to RAM)
-189+  0C97
-190+  0C97
-191+  0C97              RAM_FUNCTIONS_CODE_LENGTH: equ $-RAM_PROGRAM
-192+  0C97              	dephase
-193+  C25B
-194+  C25B                      ; ************************
-195+  C25B                      ; * System function call *
-196+  C25B                      ; ************************
-197+  C25B
-198+  C25B              SYSTEM_FUNCTION_CALLER_CODE:
-199+  C25B                      phase SYSTEM_FUNCTION_CALLER
-200+  0B23
-201+  0B23                      ; *** System function caller
-202+  0B23 E3                   ex (sp),hl                          ; Get return address
-203+  0B24 7E                   ld a,(hl)                           ; Get function code
-204+  0B25 23                   inc hl                              ; Increment return address
-205+  0B26 E3                   ex (sp),hl                          ; Store return address
-206+  0B27 08                   ex af,af'                           ; Save fuction code to AF'
-207+  0B28 F5                   push af                             ; and store original AF' to stack
-208+  0B29
-209+  0B29 3A 03 00             ld a,(P_SAVE)                       ; Save memory pageing settings
-210+  0B2C F5                   push af                             ; to stack
-211+  0B2D
-212+  0B2D 3E 30                ld A,P_U0_U1_U2_CART                ; Set paging to U0-U1-U2-CART
-213+  0B2F 32 03 00             ld (P_SAVE),a
-214+  0B32 D3 02                out (PAGE_REG),a
-215+  0B34
-216+  0B34 C3 A5 C0             jp SYSTEM_FUNCTION                  ; Call New System Function
-217+  0B37
-218+  0B37              SYSTEM_FUNCTION_RETURN:
-219+  0B37 08                   ex af,af'
-220+  0B38 F1                   pop af
-221+  0B39
-222+  0B39 32 03 00             ld (P_SAVE),a                       ; Restore paging
-223+  0B3C D3 02                out (PAGE_REG),a
-224+  0B3E F1                   pop af
-225+  0B3F 08                   ex af,af'
-226+  0B40 C9                   ret
-227+  0B41
-228+  0B41              SYSTEM_FUNCTION_CALLER_CODE_LENGTH equ $-SYSTEM_FUNCTION_CALLER
-229+  0B41                      dephase
-230+  C279
+165+  0C7F              dzx7s_main_loop:
+166+  0C7F CD BE 0C             call    dzx7s_next_bit
+167+  0C82 30 F6                jr      nc, dzx7s_copy_byte_loop ; next bit indicates either literal or sequence
+168+  0C84
+169+  0C84              ; determine number of bits used for length (Elias gamma coding)
+170+  0C84 D5                   push    de
+171+  0C85 01 00 00             ld      bc, 0
+172+  0C88 50                   ld      d, b
+173+  0C89              dzx7s_len_size_loop:
+174+  0C89 14                   inc     d
+175+  0C8A CD BE 0C             call    dzx7s_next_bit
+176+  0C8D 30 FA                jr      nc, dzx7s_len_size_loop
+177+  0C8F
+178+  0C8F              ; determine length
+179+  0C8F              dzx7s_len_value_loop:
+180+  0C8F D4 BE 0C             call    nc, dzx7s_next_bit
+181+  0C92 CB 11                rl      c
+182+  0C94 CB 10                rl      b
+183+  0C96 38 23                jr      c, dzx7s_exit           ; check end marker
+184+  0C98 15                   dec     d
+185+  0C99 20 F4                jr      nz, dzx7s_len_value_loop
+186+  0C9B 03                   inc     bc                      ; adjust length
+187+  0C9C
+188+  0C9C              ; determine offset
+189+  0C9C 5E                   ld      e, (hl)                 ; load offset flag (1 bit) + offset value (7 bits)
+190+  0C9D 23                   inc     hl
+191+  0C9E CD C7 0C             call    UPDATE_SOURCE_ADDRESS
+192+  0CA1 37           	scf
+193+  0CA2 CB 13        	rl	e
+194+  0CA4 30 0C                jr      nc, dzx7s_offset_end    ; if offset flag is set, load 4 extra bits
+195+  0CA6 16 10                ld      d, $10                  ; bit marker to load 4 bits
+196+  0CA8
+197+  0CA8              dzx7s_rld_next_bit:
+198+  0CA8 CD BE 0C             call    dzx7s_next_bit
+199+  0CAB CB 12                rl      d                       ; insert next bit into D
+200+  0CAD 30 F9                jr      nc, dzx7s_rld_next_bit  ; repeat 4 times, until bit marker is out
+201+  0CAF 14                   inc     d                       ; add 128 to DE
+202+  0CB0 CB 3A                srl	d							; retrieve fourth bit from D
+203+  0CB2              dzx7s_offset_end:
+204+  0CB2 CB 1B                rr      e                       ; insert fourth bit into E
+205+  0CB4
+206+  0CB4              ; copy previous sequence
+207+  0CB4 E3                   ex      (sp), hl                ; store source, restore destination
+208+  0CB5 E5                   push    hl                      ; store destination
+209+  0CB6 ED 52                sbc     hl, de                  ; HL = destination - offset - 1
+210+  0CB8 D1                   pop     de                      ; DE = destination
+211+  0CB9 ED B0                ldir
+212+  0CBB              dzx7s_exit:
+213+  0CBB E1                   pop     hl                      ; restore source address (compressed data)
+214+  0CBC 30 C1                jr      nc, dzx7s_main_loop
+215+  0CBE
+216+  0CBE              dzx7s_next_bit:
+217+  0CBE 87                   add     a, a                    ; check next bit
+218+  0CBF C0                   ret     nz                      ; no more bits left?
+219+  0CC0
+220+  0CC0 7E                   ld      a, (hl)                 ; load another group of 8 bits
+221+  0CC1 23                   inc     hl
+222+  0CC2 CD C7 0C             call    UPDATE_SOURCE_ADDRESS
+223+  0CC5 17                   rla
+224+  0CC6 C9                   ret
+225+  0CC7
+226+  0CC7              UPDATE_SOURCE_ADDRESS:
+227+  0CC7 F5                   push    af
+228+  0CC8
+229+  0CC8                      ; check for page switch
+230+  0CC8 7C                   ld      a, h
+231+  0CC9 FE FF                cp      high(PAGE0_SELECT)
+232+  0CCB 38 12                jr      c, UPDATE_SOURCE_ADDRESS_RETURN
+233+  0CCD
+234+  0CCD 7D                   ld      a,  l
+235+  0CCE FE FC                cp      low(PAGE0_SELECT)
+236+  0CD0 38 0D                jr      c, UPDATE_SOURCE_ADDRESS_RETURN
+237+  0CD2
+238+  0CD2                      ; page end reached -> switch page
+239+  0CD2 3A 07 0C             ld      a, (CURRENT_PAGE_INDEX)
+240+  0CD5 3C                   inc     a
+241+  0CD6 32 07 0C             ld      (CURRENT_PAGE_INDEX), a
+242+  0CD9
+243+  0CD9 CD E1 0C             call    CHANGE_ROM_PAGE
+244+  0CDC
+245+  0CDC                      ; update page ROM address
+246+  0CDC 21 07 C0             ld      hl, PAGE_DATA_START_ADDRESS
+247+  0CDF
+248+  0CDF              UPDATE_SOURCE_ADDRESS_RETURN:
+249+  0CDF F1                   pop     af
+250+  0CE0 C9                   ret
+251+  0CE1
+252+  0CE1              	endif
+253+  0CE1
+254+  0CE1                      ;---------------------------------------------------------------------
+255+  0CE1                      ; Changes ROM page according current page index (CURRENT_PAGE_INDEX) variable
+256+  0CE1              CHANGE_ROM_PAGE:
+257+  0CE1 E5                   push    hl                              ; Save ROM address
+258+  0CE2 F5                   push    af
+259+  0CE3 3A 07 0C             ld      a, (CURRENT_PAGE_INDEX)
+260+  0CE6 21 FC FF             ld      hl, PAGE0_SELECT
+261+  0CE9 B5                   or      l
+262+  0CEA 6F                   ld      l, a
+263+  0CEB 7E                   ld      a, (hl)                         ; Change page
+264+  0CEC F1                   pop     af
+265+  0CED E1                   pop     hl
+266+  0CEE C9                   ret
+267+  0CEF
+268+  0CEF                      ;---------------------------------------------------------------------
+269+  0CEF                      ; Starts Basic program for 1.x ROM
+270+  0CEF              BASIC_RUN_1x:
+271+  0CEF                      ; Set memory map to: U0, U1, U2, SYS
+272+  0CEF 3E 70        	ld	a, P_U0_U1_U2_SYS
+273+  0CF1 32 03 00             ld      (P_SAVE), a
+274+  0CF4 D3 02                out     (PAGE_REG), a
+275+  0CF6
+276+  0CF6              	; enable interrupts
+277+  0CF6 FB           	ei
+278+  0CF7
+279+  0CF7              	; execute RUN command
+280+  0CF7 2A 22 17     	ld	hl, ($1722)
+281+  0CFA C3 23 DE     	jp	$de23
+282+  0CFD
+283+  0CFD              RAM_FUNCTIONS_CODE_LENGTH: equ $-RAM_FUNCTIONS
+284+  0CFD              	dephase
+285+  C302
+286+  C302                      ; ************************
+287+  C302                      ; * System function call *
+288+  C302                      ; ************************
+289+  C302
+290+  C302              SYSTEM_FUNCTION_CALLER_STORAGE:
+291+  C302                      phase SYSTEM_FUNCTION_CALLER
+292+  0B23
+293+  0B23                      ; *** System function caller
+294+  0B23 E3                   ex      (sp),hl                     ; Get return address
+295+  0B24 7E                   ld      a,(hl)                      ; Get function code
+296+  0B25 23                   inc     hl                          ; Increment return address
+297+  0B26 E3                   ex      (sp),hl                     ; Store return address
+298+  0B27 08                   ex      af,af'                      ; Save fuction code to AF'
+299+  0B28 F5                   push    af                          ; and store original AF' to stack
+300+  0B29
+301+  0B29 3A 03 00             ld      a,(P_SAVE)                  ; Save memory pageing settings
+302+  0B2C F5                   push    af                          ; to stack
+303+  0B2D
+304+  0B2D 3E 30                ld      A,P_U0_U1_U2_CART           ; Set paging to U0-U1-U2-CART
+305+  0B2F 32 03 00             ld      (P_SAVE),a
+306+  0B32 D3 02                out     (PAGE_REG),a
+307+  0B34
+308+  0B34 C3 A5 C0             jp      SYSTEM_FUNCTION             ; Call New System Function
+309+  0B37
+310+  0B37              SYSTEM_FUNCTION_RETURN:
+311+  0B37 08                   ex      af,af'
+312+  0B38 F1                   pop     af
+313+  0B39
+314+  0B39 32 03 00             ld      (P_SAVE),a                  ; Restore paging
+315+  0B3C D3 02                out     (PAGE_REG),a
+316+  0B3E F1                   pop     af
+317+  0B3F 08                   ex      af,af'
+318+  0B40 C9                   ret
+319+  0B41
+320+  0B41              SYSTEM_FUNCTION_CALLER_CODE_LENGTH equ $-SYSTEM_FUNCTION_CALLER
+321+  0B41                      dephase
+322+  C320
+323+  C320                      ; ************************
+324+  C320                      ; * System function pass *
+325+  C320                      ; ************************
+326+  C320
+327+  C320              SYSTEM_FUNCTION_PASS_STORAGE:
+328+  C320                      phase SYSTEM_FUNCTION_PASS
+329+  0B95
+330+  0B95                      ;---------------------------------------------------------------------
+331+  0B95                      ; Passing System Function call to ROM
+332+  0B95 3E 70                ld      a,P_U0_U1_U2_SYS            ; Page in ROM
+333+  0B97 32 03 00             ld      (P_SAVE),a
+334+  0B9A D3 02                out     (PAGE_REG),a
+335+  0B9C
+336+  0B9C              SYSTEM_FUNCTION_CHAIN_ADDRESS:
+337+  0B9C C3 00 00             jp      0                           ; Jump to ROM (address will be updated when code is copied to RAM)
+338+  0B9F
+339+  0B9F              SYSTEM_FUNCTION_PASS_CODE_LENGTH equ $-SYSTEM_FUNCTION_PASS
+340+  0B9F                      dephase
+341+  C32A
 # file closed: ramfunctions.a80
-367   C279
-368   C279                      ; *** File system data ***
-369   C279 00 00 00 00  FILE_SYSTEM FileSystemStruct
-369   C27D 00 00 00 00
+461   C32A
+462   C32A                      ; *** File system data ***
+463   C32A 00 00 00 00  FILE_SYSTEM FileSystemStruct
+463   C32E 00 00 00 00
 # file closed: kilocart.a80
 
 Value    Label
 ------ - -----------------------------------------------------------
-0xC27F X FILE_SYSTEM.FILES_ADDRESS
-0xC279 X FILE_SYSTEM
-0x0C6F   END_PROGRAM_COPY
-0x0C51   PROGRAM_COPY_LOOP
-0x0C73   CHANGE_ROM_PAGE
-0x0C61   BASIC_INITIALIZE_END
-0x0C2F X CAS_HEADER.Version
-0x0C25 X CAS_HEADER.Zeros
-0x0C24 X CAS_HEADER.Autorun
-0x0C21 X CAS_HEADER.FileType
-0x0C20 X CAS_HEADER.Zero
-0x0C10 X CURRENT_FILE_NAME
-0x0C0F X CURRENT_FILE_NAME_LEN
-0x0C09   CURRENT_PAGE_INDEX
-0x0C08 X FILE_IS_OPENED
+0xC330 X FILE_SYSTEM.FILES_ADDRESS
+0xC32A X FILE_SYSTEM
+0x0CDF   UPDATE_SOURCE_ADDRESS_RETURN
+0x0CA8   dzx7s_rld_next_bit
+0x0CB2   dzx7s_offset_end
+0x0CBB   dzx7s_exit
+0x0C8F   dzx7s_len_value_loop
+0x0C89   dzx7s_len_size_loop
+0x0CBE   dzx7s_next_bit
+0x0C7F   dzx7s_main_loop
+0x0CC7   UPDATE_SOURCE_ADDRESS
+0x0C7A   dzx7s_copy_byte_loop
+0x0C78 X dzx7_standard
+0x0C74 X END_PROGRAM_COPY
+0x0C78   COMPRESSED_COPY
+0x0CE1   CHANGE_ROM_PAGE
+0x0C48   BASIC_INITIALIZE_END
+0x0C1C X CAS_HEADER.Version
+0x0C12 X CAS_HEADER.Zeros
+0x0C11 X CAS_HEADER.Autorun
+0x0C0E X CAS_HEADER.FileType
+0x0C0D X CAS_HEADER.Zero
+0x0C07   CURRENT_PAGE_INDEX
 0x0B37   SYSTEM_FUNCTION_RETURN
-0xC170   CAS_BKIN_WRONG_SIZE
-0x0C20   CAS_HEADER
-0xC153   CAS_CH_IN_EOF
-0xC18B   CAS_RETURN
-0x0C0E   CURRENT_CAS_HEADER_POS
-0x0C22   CAS_HEADER.FileLength
-0x0C0A   CURRENT_FILE_LENGTH
-0x0C0C   CURRENT_FILE_ADDRESS
-0xC128   CHECK_NEXT_FILE
-0xC0F6   COMPARE_FILENAME_CHARACTERS
-0xC0F0   COMPARE_FILE_NAMES
-0xC0DE   FILENAME_CHECK_ACCENTED_CHARACTERS
-0xC0E8   STORE_FILENAME_CHARACTER
-0xC0D1   FILENAME_TOUPPER_LOOP
-0xC175   CAS_CLOSE_RD
-0xC158   CAS_BKIN
-0xC138   CAS_CH_IN
+0xC1E3   CAS_BKIN_EOF
+0x0C0D   CAS_HEADER
+0xC1B5   CAS_CH_IN_EOF
+0xC18F   RET_NO_OPEN_FILE_ERROR
+0xC1D3   CAS_BKIN_LOAD
+0x0C0C   CURRENT_CAS_HEADER_POS
+0x0C0F   CAS_HEADER.FileLength
+0x0C08   CURRENT_FILE_LENGTH
+0x0C0A   CURRENT_FILE_ADDRESS
+0xC184   CHECK_NEXT_FILE
+0xC13F   COMPARE_FILENAME_CHARACTERS
+0xC137   COMPARE_FILE_NAMES
+0xC206   CAS_EXTENSION
+0x0004   CAS_EXTENSION_LENGTH
+0xC133   FIND_FILE_NAME
+0xC10D   FIND_EXTENSION
+0xC0F7   FILENAME_CHECK_ACCENTED_CHARACTERS
+0xC101   STORE_FILENAME_CHARACTER
+0xC0EA   FILENAME_TOUPPER_LOOP
+0xC0E5   FILENAME_LENGTH_OK
+0xC201   CAS_RETURN
+0xC0D8   CHECK_FILE_NAME
+0xC1E8   CAS_CLOSE_RD
+0xC1BA   CAS_BKIN
+0xC194   CAS_CH_IN
 0xC0CD   CAS_OPEN
-0x0C8D   SYSTEM_FUNCTON_PASS
 0xC0AF   NOT_KNOWN_CAS_FUNCTION
 0xC0B3   HANDLE_CAS_FUNCTIONS
 0xC0A5   SYSTEM_FUNCTION
-0xC279   FILE_SYSTEM.FILES1x_COUNT
-0xC27B   FILE_SYSTEM.DIRECTORY1x_ADDRESS
-0xC27A   FILE_SYSTEM.FILES2x_COUNT
-0xC27D   FILE_SYSTEM.DIRECTORY2x_ADDRESS
+0xC32A   FILE_SYSTEM.FILES1x_COUNT
+0xC32C   FILE_SYSTEM.DIRECTORY1x_ADDRESS
+0xC32B   FILE_SYSTEM.FILES2x_COUNT
+0xC32E   FILE_SYSTEM.DIRECTORY2x_ADDRESS
 0xC09A   SET_VERSION1x_FILE_SYSTEM
-0x0C7F   BASIC_RUN
-0x0C05   BASIC_VERSION
-0x0C30   COPY_PROGRAM_TO_RAM
-0xC088   GET_FILE_SYSTEM_INFO
+0x0CEF   BASIC_RUN_1x
+0x0C50   COPY_PROGRAM_TO_RAM
+0xC089   GET_FILE_SYSTEM_INFO
 0x001E   SYSTEM_FUNCTION_CALLER_CODE_LENGTH
-0xC25B   SYSTEM_FUNCTION_CALLER_CODE
-0x0C94   SYSTEM_FUNCTION_CHAIN_ADDRESS
-0x0067   RAM_FUNCTIONS_CODE_LENGTH
-0xC1F4   RAM_FUNCTIONS_CODE
-0x0C30   BASIC_INITIALIZE
-0x0039   BASIC_INITIALIZE_CODE_LENGTH
-0xC1BB   BASIC_INITIALIZE_CODE
-0x0C06   ROM_RETURN_ADDRESS
-0xC190   RAM_DATA_STORAGE
-0xC00C   MAIN
+0xC302   SYSTEM_FUNCTION_CALLER_STORAGE
+0x0B9C   SYSTEM_FUNCTION_CHAIN_ADDRESS
+0x000A   SYSTEM_FUNCTION_PASS_CODE_LENGTH
+0xC320   SYSTEM_FUNCTION_PASS_STORAGE
+0x0C05   ROM_RETURN_ADDRESS
+0x0C1D   BASIC_INITIALIZE
+0x00F8   RAM_FUNCTIONS_CODE_LENGTH
+0xC20A   RAM_FUNCTIONS_STORAGE
+0xC014   MAIN
 0xC004 X ENTRY
 0x000F X CASHeader.Version
 0x0005 X CASHeader.Zeros
@@ -787,11 +1012,11 @@ Value    Label
 0x0008 X FileSystemStruct
 0x00E5 X CAS_ERR_BLOCK_NUMBER
 0x00E6 X CAS_ERR_PROTECTION
-0x00E7   CAS_ERR_INTERNAL
+0x00E7 X CAS_ERR_INTERNAL
 0x00E8 X CAS_ERR_VERIFY
 0x00E9   CAS_ERR_NO_OPEN_FILE
 0x00EA X CAS_ERR_CRC
-0x00EB X CAS_ERR_ALREADY_OPENED
+0x00EB   CAS_ERR_ALREADY_OPENED
 0x00EC   CAS_ERR_EOF
 0x00D5 X CAS_FN_VERIFY
 0x0054 X CAS_FN_CLOSE_WR
@@ -820,10 +1045,12 @@ Value    Label
 0xFFFC   PAGE0_SELECT
 0x0B35   SYSTEM_FUNCTION_ROM_ENTRY_ADDRESS
 0x0B23   SYSTEM_FUNCTION_CALLER
-0x0C30   RAM_PROGRAM
-0x002B   RAM_DATA_LENGTH
-0x0C05   RAM_DATA
+0x0C05   RAM_FUNCTIONS
+0x0BF5   FILE_NAME_BUFFER
+0x0BF4   FILE_NAME_LENGTH
 0x0B6B   BUFFER
+0x0EB8   FILE_OPENED_FLAG
+0x0EB7   VERSION
 0x0EB6   BASIC_FLAG
 0x19EF   BASIC_PROGRAM_START
 0x1700   BASIC_STORAGE_AREA
@@ -831,3 +1058,4 @@ Value    Label
 0x0003   P_SAVE
 0xC007   PAGE_DATA_START_ADDRESS
 0xC000   CART_START_ADDRESS
+0x0B95   SYSTEM_FUNCTION_PASS

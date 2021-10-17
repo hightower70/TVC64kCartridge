@@ -11,6 +11,7 @@
             "--lst=kilocart.lst",
             "--lstlab",
             "--exp=kilocart.exp",
+            "-DDECOMPRESSOR_ENABLED=1",
             "kilocart.a80"
         ],
         "options": {

@@ -24,6 +24,12 @@
     <ClCompile Include="Source Files\ZX7Optimize.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source Files\kilocart_decomp_loader.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source Files\kilocart_loader.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Include Files\CASFile.h">

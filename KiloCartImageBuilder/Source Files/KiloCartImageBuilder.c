@@ -34,6 +34,15 @@
 #define PRINT_INFO(...) fwprintf (stdout, __VA_ARGS__)
 
 ///////////////////////////////////////////////////////////////////////////////
+// Loader binary data
+extern const long int kilocart_loader_bin_size;
+extern const unsigned char kilocart_loader_bin[];
+
+extern const long int kilocart_decomp_loader_bin_size;
+extern const unsigned char kilocart_decomp_loader_bin[];
+
+
+///////////////////////////////////////////////////////////////////////////////
 // Types
 typedef struct 
 {
@@ -128,7 +137,15 @@ int wmain(int argc, wchar_t** argv)
 
 				// output file name
 			case 'o':
-
+				if (i + 1 < argc)
+				{
+					wcscpy_s(output_file_name, MAX_PATH_LENGTH, argv[i + 1]);
+				}
+				else
+				{
+					PRINT_ERROR(L"\nNo parameter for option 'o'.");
+					success = false;
+				}
 				break;
 
 			// force compressed mode
@@ -138,6 +155,22 @@ int wmain(int argc, wchar_t** argv)
 
 			case 'h':
 			case'?':
+				PRINT_INFO(L"\nUsage: KiloCartImageBuilder.exe startup.cas file1.cas file2.cas\n");
+				PRINT_INFO(L" Creates ROM image which autostarts with 'startup.cas'. All other files are available by using LOAD instruction from\n");
+				PRINT_INFO(L" any TVC program. Number of files are limited only the available space.\n");
+				PRINT_INFO(L"\n Options:\n");
+				PRINT_INFO(L" -o: sets the output (ROM image) file name. The default is 'KiloCart.bin'.\n");
+				PRINT_INFO(L"     example: '-o cartridge.bin'option sets the output file name to 'cartridge.bin'.\n");
+				PRINT_INFO(L" -2: Switches to ROM version 2.x file system. All files are specified after this option\n");
+				PRINT_INFO(L"     will be handled as 2.x files.\n");
+				PRINT_INFO(L"     example: KiloCartImageBuilder.exe startup_v1.cas file_v1 -2 startup_v2.cas file_v2\n");
+				PRINT_INFO(L"     If same file name is intended to be used for both file system then it is recommended\n");
+				PRINT_INFO(L"     to put them into separated folder and specifiy their path in the filename.\n");
+				PRINT_INFO(L"     The path will not be stored in the ROM image.\n");
+				PRINT_INFO(L" -c: Forces to compressed ROM image. The data content will be compressed by ZX7 compressor\n");
+				PRINT_INFO(L"     and will be decompressed on the fly when the file is loaded. If compression if not forced\n");
+				PRINT_INFO(L"     the image builder will switch only to comressed mode when the specified files can't fit to the ROM.\n");
+				success = false;
 				break;
 			}
 		}
@@ -369,41 +402,25 @@ bool CreateROMImage(void)
 // Creates loader code
 bool CreateROMLoader()
 {
-	FILE* loader_file = NULL;
-	wchar_t* loader_name;
+	unsigned const char* loader;
+	int loader_length;
 
 	if (g_compressed_mode)
-		loader_name = L"kilocartloader_compressed.bin";
+	{
+		loader = kilocart_decomp_loader_bin;
+		loader_length = kilocart_decomp_loader_bin_size;
+	}
 	else
-		loader_name = L"kilocartloader.bin";
-
-	if (_wfopen_s(&loader_file, loader_name, L"rb") != 0)
 	{
-		PRINT_ERROR(L"\nCan't open file!");
-		return false;
+		loader = kilocart_loader_bin;
+		loader_length = kilocart_loader_bin_size;
 	}
 
-	// get file size
-	if (loader_file != NULL)
-	{
-		fseek(loader_file, 0, SEEK_END);
+	// copy loader to ROM image
+	memcpy(g_rom_image, loader, loader_length);
 
-		int size = ftell(loader_file);
-		if (size >= CART_ROM_SIZE)
-		{
-			PRINT_ERROR(L"\nInvalid loader!");
-			fclose(loader_file);
-			return false;
-		}
-
-		fseek(loader_file, 0, SEEK_SET);
-
-		fread(g_rom_image, size, 1, loader_file);
-
-		fclose(loader_file);
-
-		g_rom_image_address = size;
-	}
+	// update ROM address
+	g_rom_image_address = loader_length;
 
 	return true;
 }

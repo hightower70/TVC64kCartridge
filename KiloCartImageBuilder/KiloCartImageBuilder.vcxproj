@@ -22,6 +22,8 @@
     <ClCompile Include="Source Files\CharMap.c" />
     <ClCompile Include="Source Files\FileUtils.c" />
     <ClCompile Include="Source Files\KiloCartImageBuilder.c" />
+    <ClCompile Include="Source Files\kilocart_decomp_loader.c" />
+    <ClCompile Include="Source Files\kilocart_loader.c" />
     <ClCompile Include="Source Files\ZX7Compress.c" />
     <ClCompile Include="Source Files\ZX7Optimize.c" />
   </ItemGroup>

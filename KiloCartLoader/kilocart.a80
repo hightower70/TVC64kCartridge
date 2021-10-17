@@ -1,3 +1,4 @@
+
         .include "definitions.a80"
 
         org     CART_START_ADDRESS
@@ -198,6 +199,11 @@ CHECK_FILE_NAME:
 
         ; Convert file name to uppercase
         ld      a,  (hl)                    ; load file name length
+        cp      a, CART_MAX_FILENAME_LENGTH ; maximize file name length
+        jr      c, FILENAME_LENGTH_OK
+        ld      a, CART_MAX_FILENAME_LENGTH
+
+FILENAME_LENGTH_OK:
         ld      (FILE_NAME_LENGTH), a       ; save file name length
         ld      b, a                        ; b = file name length
         inc     hl
@@ -441,15 +447,14 @@ CAS_CLOSE_RD:
         ;---------------------------------------------------------------------
         ; Returns from CAS function
 CAS_RETURN:
-        pop hl                                          ; Restore HL
-        or a                                            ; Set flags according to error code
+        pop     hl                          ; Restore HL
+        or      a                           ; Set flags according to error code
         jp SYSTEM_FUNCTION_RETURN
 
 
 CAS_EXTENSION:
         db      ".CAS"
 CAS_EXTENSION_LENGTH equ $-CAS_EXTENSION
-
 
         ; *** Other modules ***
         include "ramfunctions.a80"
